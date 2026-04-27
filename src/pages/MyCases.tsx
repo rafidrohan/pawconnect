@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { format } from "date-fns";
+import { getApiUrl } from "@/lib/api";
 
 export default function MyCases() {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export default function MyCases() {
   const fetchMyCases = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("/api/my-cases", {
+      const res = await fetch(getApiUrl("/api/my-cases"), {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -55,7 +56,7 @@ export default function MyCases() {
   const handleMarkAsSolved = async (caseId: number) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`/api/cases/${caseId}/status`, {
+      const res = await fetch(getApiUrl(`/api/cases/${caseId}/status`), {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -75,7 +76,7 @@ export default function MyCases() {
     if (!confirm("Are you sure you want to delete this case?")) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`/api/cases/${caseId}`, {
+      const res = await fetch(getApiUrl(`/api/cases/${caseId}`), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

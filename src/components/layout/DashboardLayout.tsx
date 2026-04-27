@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import stayUpdated from "@/assets/design/stay-updated.svg";
 import { useTheme } from "@/components/providers/theme-provider";
+import { getApiUrl } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,7 +59,7 @@ export default function DashboardLayout() {
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
-        const res = await fetch("/api/notifications/unread-count", {
+        const res = await fetch(getApiUrl("/api/notifications/unread-count"), {
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await res.json();

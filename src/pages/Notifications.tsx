@@ -25,6 +25,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { motion, AnimatePresence } from "motion/react";
 import { Input } from "../components/ui/input";
 import { formatDistanceToNow } from "date-fns";
+import { getApiUrl } from "@/lib/api";
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -34,7 +35,7 @@ export default function Notifications() {
     const fetchNotifications = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch("/api/notifications", {
+        const response = await fetch(getApiUrl("/api/notifications"), {
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await response.json();
@@ -58,7 +59,7 @@ export default function Notifications() {
 
       const token = localStorage.getItem("token");
       await Promise.all(unreadIds.map(id => 
-        fetch(`/api/notifications/${id}/read`, { 
+        fetch(getApiUrl(`/api/notifications/${id}/read`), { 
           method: "PUT",
           headers: { "Authorization": `Bearer ${token}` }
         })
