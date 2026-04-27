@@ -270,8 +270,9 @@ export default function ReportPet() {
                   </div>
                   
                   <div className="space-y-2.5">
+                    <Label htmlFor="species" className="text-gray-700 dark:text-gray-300 font-semibold px-1">Species <span className="text-red-500">*</span></Label>
                     <Select onValueChange={(val) => setFormData({...formData, species: val})} value={formData.species}>
-                      <SelectTrigger className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl px-5">
+                      <SelectTrigger id="species" className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl px-5">
                         <SelectValue placeholder="Select Species" />
                       </SelectTrigger>
                       <SelectContent className="rounded-2xl border-gray-100 dark:border-gray-800 shadow-xl">
