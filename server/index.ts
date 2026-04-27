@@ -26,12 +26,21 @@ const JWT_SECRET = process.env.JWT_SECRET || 'pawconnect_secret_key_change_me_in
 let pool: mysql.Pool | null = null;
 try {
   pool = mysql.createPool(dbConfig);
-  // Set session timezone to UTC for all connections in the pool
+  // Test connection immediately
+  pool.getConnection()
+    .then(conn => {
+      console.log("✅ Successfully connected to MySQL at", dbConfig.host);
+      conn.release();
+    })
+    .catch(err => {
+      console.error("❌ Database connection failed! Check your Railway Environment Variables.");
+      console.error("Error details:", err.message);
+    });
+  
   pool.on('acquire', (connection) => {
     connection.query("SET time_zone = '+00:00'");
   });
-  console.log("MySQL Database pool created (UTC Forced).");
-  console.log("--- PAWCONNECT SERVER VERSION 2.0.1 (FIXED SCHEMA) ---");
+  console.log("MySQL Database pool created.");
 } catch (error) {
   console.error("Failed to create MySQL connection pool:", error);
 }
@@ -875,6 +884,16 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Global Error Handler (Ensures we always return JSON)
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Unhandled Error:", err);
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      path: req.path
+    });
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
