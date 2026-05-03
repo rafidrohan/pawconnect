@@ -1,154 +1,59 @@
-# 🐾 Lost & Found Pet Tracking & Recovery Platform
+# PawConnect 🐾
 
-## 📌 Overview
-The Lost & Found Pet Tracking & Recovery Platform is a MySQL-based relational database system designed to manage lost and found pet cases in a centralized and structured manner.
+**Reuniting pets with their families through intelligent matching.**
 
-The system enables:
-- Structured case registration
-- Automated matching between lost and found pets
-- Case lifecycle tracking
-- Data-driven recovery insights
-
-It replaces scattered social media reporting with an organized and efficient solution.
+PawConnect is a state-of-the-art platform designed to streamline the recovery process for lost and found pets. By combining structured reporting, a real-time matching engine, and geographic intelligence, we help ensure every pet finds their way home.
 
 ---
 
-## ❗ Problem Statement
-Current lost-and-found pet reporting relies on fragmented platforms such as social media, leading to:
+## 🚀 Key Features
 
-- Scattered and unstructured data
-- Duplicate or inconsistent reports
-- Manual and inefficient matching
-- Delayed recovery
+### 1. User Accounts & Profiles
+Securely create and manage accounts. Update personal details and centralize your activity across cases, pets, and notifications.
 
-This system addresses these challenges through centralized data management and automated matching.
+### 2. Smart Dashboard
+A real-time overview of active cases, recent activity, and match alerts. Our dashboard provides key insights at a glance, helping you prioritize what needs attention.
 
----
+### 3. Lost & Found Reporting
+Quickly report a lost or found pet with structured details. Capture location, time, breed, and identifying features to maximize visibility and matching accuracy.
 
-## 🚀 Core Features
+### 4. Pet Profiles
+Maintain detailed digital identities for your pets, including high-resolution photos, breed, age, color, and unique markings for faster and more reliable identification.
 
-### 1. Lost Pet Reporting
-Users can register a lost pet by providing:
-- Pet details (species, breed, color, age)
-- Last seen location
-- Date & time
-- Description
-- Optional reward
+### 5. Automatic Match Suggestions
+Our matching engine continuously scans new reports. It suggests potential hits between lost and found pets based on physical similarity and cross-referenced data.
 
----
+### 6. Case Tracking & Management
+Track the full lifecycle of a recovery—from initial reporting to final reunion. Monitor status updates, update case details, and manage progress in one place.
 
-### 2. Found Pet Reporting
-Users can report found pets including:
-- Discovery location
-- Condition of the pet
-- Date & time
-- Description and photos
+### 7. Case Linking & Match Confirmation
+Administrators and users can connect related cases and confirm matches. This allows multiple reports to be associated and verified as part of the same recovery process.
 
----
+### 8. Real-Time Notifications
+Stay informed with instant alerts for potential matches, status updates, and critical case activity. Never miss a lead when every second counts.
 
-### 3. Pet Profile Management
-Each pet is stored as a structured profile containing:
-- Species (dog, cat, etc.)
-- Breed, color
-- Gender, age
-- Distinguishing marks
-- Multiple images
+### 9. Insights & Analytics (Admin)
+Visualize platform trends like recovery rates, high-risk areas, and case activity over time to better understand pet displacement patterns and improve outcomes.
 
-This improves identification accuracy and matching quality.
+### 10. Location-Based Intelligence
+Find nearby cases using precise location data and GPS coordinates. Our Haversine-based matching ensures discovery is faster and more accurate based on proximity.
 
 ---
 
-### 4. Automated Match Detection
-The system automatically suggests potential matches between lost and found reports.
+## 🛠️ Technical Stack
 
-Matching process:
-1. Filter by **same species**
-2. Compare:
-   - Breed
-   - Color
-   - Location proximity
-3. Generate a **match score**
+- **Frontend**: React (Vite), Tailwind CSS, Lucide Icons, Framer Motion.
+- **Backend**: Node.js, Express.
+- **Database**: MySQL (Hosted on Railway).
+- **Matching Engine**: Custom scoring algorithm based on physical traits and Haversine distance.
 
-This reduces manual effort and improves recovery speed.
+## 📦 Getting Started
 
----
-
-### 5. Case Lifecycle Management
-Each case progresses through defined stages:
-- REPORTED
-- UNDER_REVIEW
-- MATCH_FOUND
-- RECOVERED
-- CLOSED
-
-This ensures structured tracking and monitoring.
+1.  **Clone the repo**: `git clone https://github.com/RashidAssef/370-Project.git`
+2.  **Install dependencies**: `npm install`
+3.  **Run development server**: `npm run dev`
+4.  **Build for production**: `npm run build`
 
 ---
 
-### 6. Location-Based Search
-Users can search and filter cases by:
-- City
-- Area
-
-This allows quick identification of nearby reports.
-
----
-
-### 7. Image Management
-The system supports image uploads for:
-- Pet profiles
-- Case reports
-
-This enables visual comparison of pets.
-
----
-
-### 8. Notification System
-Users receive updates regarding:
-- Match suggestions
-- Case status changes
-
----
-
-### 9. Match Review & Confirmation
-Users or admins can:
-- Review suggested matches
-- Confirm or reject matches
-
-This ensures accurate recovery decisions.
-
----
-
-### 10. Recovery Analytics
-The system provides insights such as:
-- Recovery success rate
-- Most commonly lost species/breeds
-- High-risk locations
-- Time-based trends
-
----
-
-## 🧠 System Design Highlights
-- Relational database (MySQL)
-- Normalized schema with multiple entities
-- Use of ENUMs for controlled values
-- Indexing for efficient queries
-- Support for automated matching logic
-
----
-
-## 🎯 Goal
-To improve pet recovery efficiency by providing a structured, automated, and centralized system for managing lost and found cases.
-
----
-
-## 🛠️ Setup & Deployment
-
-**Prerequisites:**  Node.js, MySQL
-
-1. Install dependencies:
-   `npm install`
-2. Configure your `.env` file with MySQL credentials
-3. Initialize the database using `public/schema.sql`
-4. Run the app:
-   `npm run dev`
+*Every pet deserves to be home.* ❤️
