@@ -1463,10 +1463,12 @@ async function startServer() {
       if (matchRows.length === 0) return res.status(404).json({ error: "Confirmed match not found" });
       
       const match = matchRows[0];
-      // Only the lost pet owner (actual owner) can trigger final recovery
-      if (match.lost_user_id !== decoded.userId) {
-          console.warn(`Recovery denied: User ${decoded.userId} is not the owner ${match.lost_user_id}`);
-          return res.status(403).json({ error: "Only the pet owner can mark recovery" });
+      const isAdmin = decoded.role?.toUpperCase() === 'ADMIN';
+
+      // Only the lost pet owner (actual owner) or an Admin can trigger final recovery
+      if (match.lost_user_id !== decoded.userId && !isAdmin) {
+          console.warn(`Recovery denied: User ${decoded.userId} is not the owner ${match.lost_user_id} and not an Admin`);
+          return res.status(403).json({ error: "Only the pet owner or an Admin can mark recovery" });
       }
 
       console.log(`Marking match ${req.params.id} (Cases ${match.lost_case_id}, ${match.found_case_id}) as recovered.`);

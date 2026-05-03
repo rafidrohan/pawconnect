@@ -246,6 +246,32 @@ export default function CaseDetails({ isPublicView = false }: { isPublicView?: b
                     </DropdownMenuItem>
                   </DropdownMenuContent>
               </DropdownMenu>
+              {matches.some(m => m.match_status === 'CONFIRMED') && caseItem.status !== 'RECOVERED' && (
+                <Button 
+                  variant="outline"
+                  disabled={isUpdating}
+                  onClick={async () => {
+                    const confirmedMatch = matches.find(m => m.match_status === 'CONFIRMED');
+                    if (!confirmedMatch) return;
+                    setIsUpdating(true);
+                    try {
+                      const token = localStorage.getItem("token");
+                      const res = await fetch(getApiUrl(`/api/matches/${confirmedMatch.match_id}/recover`), {
+                        method: 'PUT',
+                        headers: { "Authorization": `Bearer ${token}` }
+                      });
+                      if (res.ok) window.location.reload();
+                    } catch (err) {
+                      console.error("Recovery failed:", err);
+                    } finally {
+                      setIsUpdating(false);
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white border-0 font-bold px-6 shadow-lg shadow-green-100 dark:shadow-none"
+                >
+                  <Heart className="w-4 h-4 mr-2 fill-current" /> Mark Both as Recovered
+                </Button>
+              )}
             </div>
           )}
         </div>

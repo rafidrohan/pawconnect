@@ -127,7 +127,7 @@ function MatchDetailsDialog({ match, currentUser, onClose, onStatusUpdate }: { m
                   </div>
                 </div>
 
-                {match.lost_user_id === currentUser?.id && match.lost_status !== 'RECOVERED' && (
+                {(match.lost_user_id === currentUser?.id || currentUser?.role?.toUpperCase() === 'ADMIN') && match.lost_status !== 'RECOVERED' && (
                   <Button 
                     size="sm"
                     onClick={handleMarkRecovered}
