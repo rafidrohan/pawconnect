@@ -56,12 +56,15 @@ export default function ReportPet() {
     age: "Adult",
     color: "",
     marks: "",
-    location: "",
+    city: "",
+    area: "",
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
     description: "",
     reward: 0,
-    condition: "Good"
+    condition: "Good",
+    lat: null as number | null,
+    lng: null as number | null
   });
 
   const [photos, setPhotos] = useState<string[]>([]);
@@ -91,26 +94,29 @@ export default function ReportPet() {
             const validGenders = ["male", "female", "unknown"];
             
             setFormData({
-              petName: data.name || "",
-              species: data.species || "",
+              petName: data.pet_name || "",
+              species: (data.species || "").toLowerCase(),
               breed: data.breed || "",
               gender: validGenders.includes(loadedGender) ? loadedGender : "unknown",
               age: data.age || "Adult",
               color: data.color || "",
               marks: data.distinguishing_marks || "",
-              location: data.city || "",
-              date: reportDate.toISOString().split('T')[0],
-              time: reportDate.toISOString().split('T')[1].slice(0, 5),
+              city: data.city || "",
+              area: data.area || "",
+              date: reportDate instanceof Date && !isNaN(reportDate.getTime()) ? reportDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              time: reportDate instanceof Date && !isNaN(reportDate.getTime()) ? reportDate.toISOString().split('T')[1].slice(0, 5) : "12:00",
               description: data.description || "",
               reward: data.reward || 0,
-              condition: data.found_condition || "Good"
+              condition: data.found_condition || "Good",
+              lat: data.latitude ? Number(data.latitude) : null,
+              lng: data.longitude ? Number(data.longitude) : null
             });
             setPhotos(data.photos || []);
           } else {
             // Pre-filling from registered pet
             setFormData(prev => ({
               ...prev,
-              petName: data.name || "",
+              petName: data.name || data.pet_name || "",
               species: (data.species || "").toLowerCase(),
               breed: data.breed || "",
               gender: (data.gender || "unknown").toLowerCase(),
@@ -150,12 +156,37 @@ export default function ReportPet() {
     }
   };
 
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsFetching(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData(prev => ({
+          ...prev,
+          lat: Number(position.coords.latitude),
+          lng: Number(position.coords.longitude)
+        }));
+        setIsFetching(false);
+        // Optional: Could reverse geocode here if we had a service
+      },
+      (err) => {
+        console.error("GPS Error:", err);
+        setError("Unable to retrieve your location. Please ensure GPS is enabled.");
+        setIsFetching(false);
+      }
+    );
+  };
+
   const removePhoto = (index: number) => {
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
-    if (!formData.species || !formData.breed || !formData.location || !formData.color) {
+    if (!formData.species || !formData.breed || !formData.city || !formData.area || !formData.color) {
       setError("Please fill in all required fields (marked with *)");
       return;
     }
@@ -387,17 +418,45 @@ export default function ReportPet() {
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                   <div className="space-y-2.5 md:col-span-2">
-                    <Label htmlFor="location" className="text-gray-700 dark:text-gray-300 font-semibold px-1">Location / Area <span className="text-red-500">*</span></Label>
-                    <div className="relative group">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
+                    <div className="space-y-2.5">
+                      <Label htmlFor="city" className="text-gray-700 dark:text-gray-300 font-semibold px-1">City <span className="text-red-500">*</span></Label>
                       <Input 
-                        id="location" 
-                        placeholder="e.g. Dhanmondi Lake, near Sector 5" 
-                        value={formData.location}
-                        onChange={(e) => setFormData({...formData, location: e.target.value})}
-                        className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl pl-12 pr-5 transition-all" 
+                        id="city" 
+                        placeholder="e.g. Dhaka" 
+                        value={formData.city}
+                        onChange={(e) => setFormData({...formData, city: e.target.value})}
+                        className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl px-5" 
                       />
-                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-current transition-colors" />
+                    </div>
+                    <div className="space-y-2.5">
+                      <Label htmlFor="area" className="text-gray-700 dark:text-gray-300 font-semibold px-1">Area / Road <span className="text-red-500">*</span></Label>
+                      <Input 
+                        id="area" 
+                        placeholder="e.g. Dhanmondi 32" 
+                        value={formData.area}
+                        onChange={(e) => setFormData({...formData, area: e.target.value})}
+                        className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl px-5" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between mt-2 px-1">
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        onClick={detectLocation}
+                        className="h-8 text-[11px] font-bold text-green-600 dark:text-green-400 gap-1.5 hover:bg-green-50 dark:hover:bg-green-900/20 px-3 rounded-full"
+                      >
+                        <RefreshCcw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
+                        {formData.lat !== null ? "Location Captured ✓" : "Detect Precise GPS Location"}
+                      </Button>
+                      {formData.lat !== null && (
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          {Number(formData.lat).toFixed(4)}, {Number(formData.lng).toFixed(4)}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -565,7 +624,7 @@ export default function ReportPet() {
               <Button 
                 onClick={() => {
                   setFormData({
-                    petName: "", species: "", breed: "", gender: "unknown", age: "adult", color: "", marks: "", location: "", date: new Date().toISOString().split('T')[0], time: "12:00", description: "", reward: 0, condition: "Good"
+                    petName: "", species: "", breed: "", gender: "unknown", age: "Adult", color: "", marks: "", city: "", area: "", date: new Date().toISOString().split('T')[0], time: "12:00", description: "", reward: 0, condition: "Good", lat: null, lng: null
                   });
                   setPhotos([]);
                 }}

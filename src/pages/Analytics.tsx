@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Button } from "../components/ui/button";
@@ -7,6 +8,7 @@ import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
 import { getApiUrl } from "@/lib/api";
 
 export default function Analytics() {
+  const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,10 +55,10 @@ export default function Analytics() {
   }
 
   const overviewStats = [
-    { icon: FileText, label: 'Total Cases', value: data.overview.totalCases, sub: 'All reported cases', trend: 'Live', color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20' },
-    { icon: Clock, label: 'Active Cases', value: data.overview.activeCases, sub: 'Currently open cases', trend: 'Live', color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-    { icon: CheckCircle2, label: 'Recovered', value: data.overview.recoveredCases, sub: 'Successfully reunited', trend: 'Live', color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
-    { icon: Heart, label: 'Matches', value: data.overview.confirmedMatches, sub: 'Confirmed reunions', trend: 'Live', color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { icon: FileText, label: 'Total Cases', value: data.overview.totalCases, sub: 'All reported cases', trend: 'Live', color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20', path: '/app/cases' },
+    { icon: Clock, label: 'Active Cases', value: data.overview.activeCases, sub: 'Currently open cases', trend: 'Live', color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20', path: '/app/cases' },
+    { icon: CheckCircle2, label: 'Recovered', value: data.overview.recoveredCases, sub: 'Successfully reunited', trend: 'Live', color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20', path: '/app/cases' },
+    { icon: Heart, label: 'Matches', value: data.overview.confirmedMatches, sub: 'Confirmed reunions', trend: 'Live', color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20', path: '/app/matches' },
     { icon: Heart, label: 'Success Rate', value: `${Math.round((data.overview.recoveredCases / (data.overview.totalCases || 1)) * 100)}%`, sub: 'Overall recovery', trend: 'Live', color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20' },
   ];
 
@@ -78,7 +80,11 @@ export default function Analytics() {
       {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {overviewStats.map((stat, i) => (
-          <Card key={i} className="border-0 shadow-sm bg-white dark:bg-[#1A2234]">
+          <Card 
+            key={i} 
+            className={`border-0 shadow-sm bg-white dark:bg-[#1A2234] ${stat.path ? 'cursor-pointer hover:ring-2 hover:ring-green-500/50 transition-all active:scale-95' : ''}`}
+            onClick={() => stat.path && navigate(stat.path)}
+          >
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className="flex items-center gap-3">
                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${stat.bg} ${stat.color}`}>

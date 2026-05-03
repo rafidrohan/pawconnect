@@ -15,7 +15,8 @@ import {
   MoreVertical, 
   FolderOpen,
   Loader2, 
-  Info 
+  Info,
+  Coins
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -125,6 +126,26 @@ export default function MyCases() {
       }
     } catch (err) {
       console.error("Error marking as solved:", err);
+    }
+  };
+
+  const handleUpdateStatus = async (caseId: number, status: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(getApiUrl(`/api/cases/${caseId}/status`), {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        fetchStats();
+        fetchMyCases();
+      }
+    } catch (err) {
+      console.error("Error updating status:", err);
     }
   };
 
@@ -315,6 +336,11 @@ export default function MyCases() {
                           <div>
                             <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                {caseItem.breed}
+                               {Number(caseItem.reward) > 0 && (
+                                 <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] py-0 px-2 h-5 border-amber-200 dark:border-amber-900/50">
+                                   <Coins className="w-3 h-3 mr-1" /> ${caseItem.reward}
+                                 </Badge>
+                               )}
                             </div>
                             <div className="text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5 text-xs">
                                <span className="capitalize">{caseItem.gender.toLowerCase()}</span>
@@ -360,8 +386,24 @@ export default function MyCases() {
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40 rounded-xl">
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl">
                               <DropdownMenuItem className="cursor-pointer font-medium" onClick={() => navigate(`/app/report/${caseItem.case_type.toLowerCase()}?edit=${caseItem.case_id}`)}>Edit Case</DropdownMenuItem>
+                              {isAdmin && caseItem.status === 'REPORTED' && (
+                                <DropdownMenuItem 
+                                  className="cursor-pointer font-medium text-amber-600" 
+                                  onClick={() => handleUpdateStatus(caseItem.case_id, 'UNDER_REVIEW')}
+                                >
+                                  Move to Review
+                                </DropdownMenuItem>
+                              )}
+                              {isAdmin && caseItem.status === 'UNDER_REVIEW' && (
+                                <DropdownMenuItem 
+                                  className="cursor-pointer font-medium text-blue-600" 
+                                  onClick={() => handleUpdateStatus(caseItem.case_id, 'REPORTED')}
+                                >
+                                  Approve Report
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem className="cursor-pointer font-medium text-green-600" onClick={() => handleMarkAsSolved(caseItem.case_id)}>Mark as Solved</DropdownMenuItem>
                               <DropdownMenuItem className="cursor-pointer font-medium text-red-600" onClick={() => handleDelete(caseItem.case_id)}>Delete</DropdownMenuItem>
                             </DropdownMenuContent>

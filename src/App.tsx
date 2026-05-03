@@ -14,6 +14,7 @@ import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import CaseDetails from "./pages/CaseDetails";
 import EditPet from "./pages/EditPet";
+import PublicCases from "./pages/PublicCases";
 
 import { AuthGuard } from "@/components/features/auth/AuthGuard";
 
@@ -22,6 +23,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/cases" element={<PublicCases isPublicView={true} />} />
+        <Route path="/cases/:id" element={<CaseDetails isPublicView={true} />} />
         
         <Route path="/app" element={
           <AuthGuard>
@@ -37,6 +40,7 @@ export default function App() {
           <Route path="report/:type" element={<ReportPet />} />
           <Route path="matches" element={<ViewMatches />} />
           <Route path="cases" element={<MyCases />} />
+          <Route path="cases/active" element={<PublicCases isPublicView={false} />} />
           <Route path="cases/:id" element={<CaseDetails />} />
           <Route path="notifications" element={<Notifications />} />
           <Route 

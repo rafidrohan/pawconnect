@@ -254,6 +254,18 @@ export default function PetProfile() {
 
         {/* Identification & Activity Card */}
         <div className="space-y-6">
+          {pet.photos && pet.photos.length > 0 && (
+            <Card className="border border-gray-100 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1A2234] rounded-2xl p-6">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white mb-4">Pet Gallery</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {pet.photos.map((p: string, i: number) => (
+                  <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-100 dark:border-gray-800 group cursor-pointer" onClick={() => window.open(p, '_blank')}>
+                    <img src={p} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={`G-${i}`} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
           <Card className="border border-gray-100 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1A2234] rounded-2xl p-6">
              <h3 className="text-lg font-black text-gray-900 dark:text-white mb-4">Pet Identification</h3>
              <div className="bg-rose-50/30 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-900/20 rounded-2xl p-6 flex flex-col items-center justify-center space-y-4 text-center">

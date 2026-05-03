@@ -19,10 +19,25 @@ import {
   Phone,
   User as UserIcon,
   Loader2,
-  Heart
+  Heart,
+  ShieldCheck,
+  Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getApiUrl } from "@/lib/api";
+
+// --- Helpers ---
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 // --- Dialog Components ---
 
@@ -132,41 +147,99 @@ function MatchDetailsDialog({ match, currentUser, onClose, onStatusUpdate }: { m
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Name</p>
-                  <div className="flex items-center gap-2">
-                    <UserIcon className="w-4 h-4 text-green-500" />
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">
-                      {match.lost_user_id === currentUser?.id ? match.found_user_name : match.lost_user_name}
-                    </span>
+              {currentUser?.role?.toUpperCase() === 'ADMIN' ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="col-span-full">
+                       <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-2">Lost Pet Reporter (Owner)</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Name</p>
+                      <div className="flex items-center gap-2">
+                        <UserIcon className="w-4 h-4 text-green-500" />
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{match.lost_user_name}</span>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Email Address</p>
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-green-500" />
+                        <a href={`mailto:${match.lost_user_email}`} className="text-sm font-bold text-green-600 hover:underline">{match.lost_user_email}</a>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Phone Number</p>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-green-500" />
+                        <a href={`tel:${match.lost_user_phone}`} className="text-sm font-bold text-green-600 hover:underline">{match.lost_user_phone || 'Not provided'}</a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="col-span-full">
+                       <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-2">Found Pet Reporter</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Name</p>
+                      <div className="flex items-center gap-2">
+                        <UserIcon className="w-4 h-4 text-green-500" />
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{match.found_user_name}</span>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Email Address</p>
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-green-500" />
+                        <a href={`mailto:${match.found_user_email}`} className="text-sm font-bold text-green-600 hover:underline">{match.found_user_email}</a>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Phone Number</p>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-green-500" />
+                        <a href={`tel:${match.found_user_phone}`} className="text-sm font-bold text-green-600 hover:underline">{match.found_user_phone || 'Not provided'}</a>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Email Address</p>
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-green-500" />
-                    <a 
-                      href={`mailto:${match.lost_user_id === currentUser?.id ? match.found_user_email : match.lost_user_email}`}
-                      className="text-sm font-bold text-green-600 hover:underline"
-                    >
-                      {match.lost_user_id === currentUser?.id ? match.found_user_email : match.lost_user_email}
-                    </a>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Name</p>
+                    <div className="flex items-center gap-2">
+                      <UserIcon className="w-4 h-4 text-green-500" />
+                      <span className="text-sm font-bold text-gray-900 dark:text-white">
+                        {match.lost_user_id === currentUser?.id ? match.found_user_name : match.lost_user_name}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Email Address</p>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-green-500" />
+                      <a 
+                        href={`mailto:${match.lost_user_id === currentUser?.id ? match.found_user_email : match.lost_user_email}`}
+                        className="text-sm font-bold text-green-600 hover:underline"
+                      >
+                        {match.lost_user_id === currentUser?.id ? match.found_user_email : match.lost_user_email}
+                      </a>
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Phone Number</p>
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-green-500" />
+                      <a 
+                        href={`tel:${match.lost_user_id === currentUser?.id ? match.found_user_phone : match.lost_user_phone}`}
+                        className="text-sm font-bold text-green-600 hover:underline"
+                      >
+                        {match.lost_user_id === currentUser?.id ? match.found_user_phone || 'Not provided' : match.lost_user_phone || 'Not provided'}
+                      </a>
+                    </div>
                   </div>
                 </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-green-100 dark:border-green-900/20">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Phone Number</p>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-green-500" />
-                    <a 
-                      href={`tel:${match.lost_user_id === currentUser?.id ? match.found_user_phone : match.lost_user_phone}`}
-                      className="text-sm font-bold text-green-600 hover:underline"
-                    >
-                      {match.lost_user_id === currentUser?.id ? match.found_user_phone || 'Not provided' : match.lost_user_phone || 'Not provided'}
-                    </a>
-                  </div>
-                </div>
-              </div>
+              )}
             </motion.div>
           )}
 
@@ -410,6 +483,30 @@ export default function ViewMatches() {
     }
   };
 
+  const handleDeleteMatch = async (matchId: number) => {
+    if (!window.confirm("Are you sure you want to delete this match record? This cannot be undone.")) return;
+    
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(getApiUrl(`/api/matches/${matchId}`), {
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        await fetchMatches();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to delete match");
+      }
+    } catch (err) {
+      console.error("Delete match error:", err);
+      alert("Network error. Please try again.");
+    }
+  };
+
+  const isAdmin = currentUser?.role?.toUpperCase() === "ADMIN";
+
   const filteredMatches = matches.filter(m => {
     // Only show pending matches or all if needed? For now just filter by confidence
     const score = (m.match_score || 0) * 100;
@@ -447,6 +544,25 @@ export default function ViewMatches() {
 
   return (
     <div className="space-y-10 max-w-7xl mx-auto pb-12">
+      {isAdmin && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-purple-600 text-white px-6 py-4 rounded-[24px] flex items-center justify-between shadow-lg shadow-purple-200 dark:shadow-none"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg">Admin Management Mode</h3>
+              <p className="text-purple-100 text-xs font-medium">Viewing and managing all potential matches across the platform.</p>
+            </div>
+          </div>
+          <Badge className="bg-white text-purple-600 hover:bg-white border-0 font-black px-4 py-1.5 rounded-xl">PLATFORM VIEW</Badge>
+        </motion.div>
+      )}
+
       {/* Premium Pill Tabs */}
       <div className="bg-white dark:bg-[#1A2234] border border-slate-100 dark:border-slate-800 p-2 rounded-2xl">
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide no-scrollbar">
@@ -580,7 +696,15 @@ export default function ViewMatches() {
                                {Math.round(match.match_score * 100)}%
                             </span>
                          </div>
-                         <span className="text-[9px] font-bold text-gray-400 mt-2 uppercase tracking-tighter text-center">Score</span>
+                         <span className={`uppercase tracking-tighter text-center mt-2 text-[9px] font-bold ${
+                           isConfirmed ? 'text-green-600' : isRejected ? 'text-red-500' : 'text-green-600 dark:text-green-400'
+                         }`}>Score</span>
+                         {match.lost_lat && match.found_lat && (
+                           <div className="mt-2 text-[10px] font-black text-gray-500 flex items-center gap-1">
+                             <MapPin className="w-3 h-3" />
+                             {calculateDistance(match.lost_lat, match.lost_lng, match.found_lat, match.found_lng)?.toFixed(1)} km
+                           </div>
+                         )}
                       </div>
 
                       {/* Found Pet Panel */}
@@ -631,6 +755,16 @@ export default function ViewMatches() {
                         >
                           {isConfirmed ? 'View Contact Details' : isRejected ? 'Rejected' : 'Review Match'}
                         </Button>
+                        {isAdmin && (
+                          <Button 
+                            variant="outline"
+                            size="icon"
+                            className="w-9 h-9 rounded-xl border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 shrink-0"
+                            onClick={() => handleDeleteMatch(match.match_id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>

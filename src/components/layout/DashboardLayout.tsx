@@ -41,6 +41,7 @@ const navItems = [
   { icon: PawPrint, label: "Report Found Pet", path: "/app/report/found", iconColor: "text-green-500", activeColor: "text-green-600", activeBg: "bg-green-50 dark:bg-green-900/30", darkActiveColor: "dark:text-green-400" },
   { icon: Heart, label: "View Matches", path: "/app/matches", activeColor: "text-purple-600", activeBg: "bg-purple-50 dark:bg-purple-900/30", darkActiveColor: "dark:text-purple-400" },
   { icon: FolderOpen, label: "My Cases", path: "/app/cases", activeColor: "text-indigo-600", activeBg: "bg-indigo-50 dark:bg-indigo-900/30", darkActiveColor: "dark:text-indigo-400" },
+  { icon: SearchIcon, label: "Active Cases", path: "/app/cases/active", activeColor: "text-amber-600", activeBg: "bg-amber-50 dark:bg-amber-900/30", darkActiveColor: "dark:text-amber-400" },
   { icon: Bell, label: "Notifications", path: "/app/notifications", activeColor: "text-red-600", activeBg: "bg-red-50 dark:bg-red-900/30", darkActiveColor: "dark:text-red-400" },
   { icon: BarChart3, label: "Analytics", path: "/app/analytics", activeColor: "text-amber-600", activeBg: "bg-amber-50 dark:bg-amber-900/30", darkActiveColor: "dark:text-amber-400" },
   { icon: Dog, label: "My Pets", path: "/app/my-pets", activeColor: "text-rose-600", activeBg: "bg-rose-50 dark:bg-rose-900/30", darkActiveColor: "dark:text-rose-400" },
@@ -53,6 +54,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadCount, setUnreadCount] = React.useState(0);
+  const [searchQuery, setSearchQuery] = React.useState("");
 
   React.useEffect(() => {
     const fetchCount = async () => {
@@ -80,6 +82,7 @@ export default function DashboardLayout() {
       case "/app/report/found": return <div className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><MapPin className="text-green-500 w-6 h-6" /> Report Found Pet</div>;
       case "/app/matches": return <div className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Heart className="text-purple-500 w-6 h-6" /> View Matches</div>;
       case "/app/cases": return <div className="text-2xl font-bold text-gray-900 dark:text-white">My Cases</div>;
+      case "/app/cases/active": return <div className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><SearchIcon className="text-amber-500 w-6 h-6" /> Platform Active Cases</div>;
       case "/app/notifications": return <div className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Bell className="text-green-500 w-6 h-6" /> Notifications</div>;
       case "/app/analytics": return <div className="text-2xl font-bold text-gray-900 dark:text-white">Analytics Dashboard</div>;
       case "/app/profile": return <div className="text-2xl font-bold text-gray-900 dark:text-white">Profile</div>;
@@ -118,17 +121,11 @@ export default function DashboardLayout() {
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f1520] flex font-sans">
       {/* Sidebar */}
       <aside className="w-64 bg-white dark:bg-[#151a25] border-r border-slate-200 dark:border-slate-800 flex flex-col fixed inset-y-0 z-10 transition-colors">
-        <div className="p-6 flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-          <div className="w-10 h-10 rounded-full bg-slate-900 dark:bg-white flex place-items-center justify-center relative">
-             <PawPrint className="w-6 h-6 text-white dark:text-black fill-current" />
-             <Heart className="w-2.5 h-2.5 text-red-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[2px] fill-current" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center leading-tight">
-              Paw<span className="text-green-500">Connect</span>
-            </h1>
-            <p className="text-[10px] text-gray-500 font-normal flex items-center gap-1">Bringing pets home <Heart className="w-2 h-2 text-red-500 fill-current" /></p>
-          </div>
+        <div className="p-4 flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+          <PawPrint className="w-8 h-8 text-black dark:text-white fill-current" />
+          <span className="flex items-center font-bold text-xl text-gray-900 dark:text-white">
+            Paw<span className="text-green-500">Connect</span>
+          </span>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
@@ -138,6 +135,7 @@ export default function DashboardLayout() {
             <NavLink
               key={item.path}
               to={item.path}
+              end={item.path === "/app/cases"}
               className={({ isActive }) =>
                 `flex items-center justify-between px-4 py-2 rounded-xl text-[13.5px] font-bold transition-all ${
                   isActive
@@ -172,12 +170,12 @@ export default function DashboardLayout() {
         </nav>
 
         {/* Sidebar Footer Illustration & Message */}
-        <div className="px-4 py-6 mt-auto">
-          <div className="relative group flex justify-center mb-2">
-            <img src={stayUpdated} className="w-[90%] h-auto object-contain transition-transform group-hover:scale-110 duration-700" alt="Pets Illustration" />
+        <div className="px-4 py-4 mt-auto">
+          <div className="relative group flex justify-center mb-1">
+            <img src={stayUpdated} className="w-[70%] h-auto object-contain transition-transform group-hover:scale-110 duration-700" alt="Pets Illustration" />
           </div>
-          <div className="bg-green-50/50 dark:bg-green-900/10 border border-green-100/50 dark:border-green-900/20 rounded-2xl p-4 text-center">
-            <p className="text-[12px] font-bold text-gray-900 dark:text-gray-100 leading-tight">
+          <div className="bg-green-50/50 dark:bg-green-900/10 border border-green-100/50 dark:border-green-900/20 rounded-xl p-3 text-center">
+            <p className="text-[11px] font-bold text-gray-900 dark:text-gray-100 leading-tight">
               Every pet deserves<br />to be home <Heart className="w-3 h-3 inline fill-current text-red-500" />
             </p>
           </div>
@@ -189,11 +187,18 @@ export default function DashboardLayout() {
         {/* Top Header - Now blended and aligned */}
         <header className="h-24 flex items-center sticky top-0 z-30 bg-gray-50/50 dark:bg-[#0F172A] backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-8 w-full flex items-center justify-between">
-            <div className="flex-1 max-w-xl">
+            <div className="flex-1 max-w-xl hidden lg:block">
             <div className="relative group">
               <Input 
                 placeholder="Search pets, cases, locations..." 
                 className="w-full h-11 bg-gray-50 dark:bg-[#0F172A] border-gray-100 dark:border-gray-800 rounded-2xl pl-5 pr-12 text-sm focus:ring-2 focus:ring-purple-500 transition-all"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery.trim()) {
+                    navigate(`/app/cases/active?search=${encodeURIComponent(searchQuery.trim())}`);
+                  }
+                }}
               />
               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
                 <SearchIcon className="w-5 h-5" />

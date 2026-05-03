@@ -45,11 +45,11 @@ export default function Landing() {
         </div>
 
         <div className="hidden md:flex gap-8 text-sm font-semibold text-gray-600 dark:text-gray-300">
-          <a href="#" className="text-green-500 border-b-2 border-green-500 pb-1">Home</a>
-          <a href="#" className="hover:text-green-500 transition-colors">About Us</a>
-          <a href="#" className="hover:text-green-500 transition-colors">How It Works</a>
-          <a href="#" className="hover:text-green-500 transition-colors">Features</a>
-          <a href="#" className="hover:text-green-500 transition-colors">Contact</a>
+          <a href="/" className="text-green-500 border-b-2 border-green-500 pb-1">Home</a>
+          <a href="#about" className="hover:text-green-500 transition-colors">About Us</a>
+          <a href="#how-it-works" className="hover:text-green-500 transition-colors">How It Works</a>
+          <span onClick={() => navigate('/cases')} className="hover:text-green-500 transition-colors cursor-pointer">Active Cases</span>
+          <a href="#contact" className="hover:text-green-500 transition-colors">Contact</a>
         </div>
 
         <div className="flex items-center gap-4">
@@ -103,8 +103,8 @@ export default function Landing() {
               <Button className="w-full sm:w-auto h-12 rounded-xl px-6 text-sm font-bold bg-green-500 hover:bg-green-600 text-white transition-transform hover:scale-105" onClick={() => navigate('/app/report/found')}>
                 <PawPrint className="w-5 h-5 mr-2 text-white fill-current"/> Report Found Pet
               </Button>
-              <Button variant="outline" className="w-full sm:w-auto h-12 rounded-xl px-6 text-sm font-bold border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A2234] transition-transform hover:scale-105" onClick={() => openAuth("signup")}>
-                <Search className="w-4 h-4 mr-2" /> View Matches
+              <Button variant="outline" className="w-full sm:w-auto h-12 rounded-xl px-6 text-sm font-bold border-2 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A2234] transition-transform hover:scale-105" onClick={() => navigate("/cases")}>
+                <Search className="w-4 h-4 mr-2" /> View Active Cases
               </Button>
             </div>
             <div className="text-sm font-medium text-gray-500 dark:text-gray-400 flex items-center justify-center lg:justify-start gap-2">

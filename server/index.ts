@@ -82,7 +82,7 @@ async function startServer() {
 
     const { 
       type, petName, species, breed, gender, age, color, marks, 
-      location, date, time, description, reward, condition, photos,
+      city, area, date, time, description, reward, condition, photos,
       petId
     } = req.body;
 
@@ -104,10 +104,9 @@ async function startServer() {
       }
 
       // 2. Create Location
-      const locStr = String(location || "Unknown");
       const [locResult]: any = await connection.query(
-        "INSERT INTO Location (city, area) VALUES (?, ?)", 
-        [locStr.split(',')[0].trim() || "Unknown", locStr]
+        "INSERT INTO Location (city, area, latitude, longitude) VALUES (?, ?, ?, ?)", 
+        [city || "Unknown", area || "Unknown", req.body.lat || null, req.body.lng || null]
       );
       const locationId = locResult.insertId;
 
@@ -116,7 +115,7 @@ async function startServer() {
       if (!finalPetId) {
         const [petResult]: any = await connection.query(
           "INSERT INTO PetProfile (name, species, breed, age, gender, color, distinguishing_marks, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-          [petName || null, species || "Unknown", breed || "Unknown", age || null, (gender || 'UNKNOWN').toUpperCase(), color || "Unknown", marks || null, decoded.userId]
+          [petName || null, species || "Unknown", breed || "Unknown", age || null, (gender || 'UNKNOWN').toUpperCase(), color || "Unknown", marks || null, null]
         );
         finalPetId = petResult.insertId;
       }
@@ -158,10 +157,11 @@ async function startServer() {
       // --- ADVANCED ASYNC MATCHING ENGINE ---
       try {
         const otherType = String(type).toLowerCase() === 'lost' ? 'FOUND' : 'LOST';
-        const currentCity = locStr.split(',')[0].trim();
         
         const [potentialMatches]: any = await pool.query(
-          `SELECT c.case_id, r.user_id, p.breed, p.gender, l.city, p.color
+          `SELECT 
+             c.case_id, r.user_id, p.breed, p.gender, p.color,
+             l.city, l.area, l.latitude, l.longitude
            FROM CaseTable c 
            JOIN PetProfile p ON c.pet_id = p.pet_id 
            JOIN Reporter r ON c.reporter_id = r.reporter_id
@@ -169,12 +169,13 @@ async function startServer() {
            WHERE c.case_type = ? 
            AND p.species = ? 
            AND c.status = 'REPORTED'
-           AND LOWER(l.city) = LOWER(?)
+           AND (LOWER(l.city) = LOWER(?) OR ? IS NULL)
            AND (p.gender = ? OR p.gender = 'UNKNOWN' OR ? = 'UNKNOWN')
            AND (p.breed IS NULL OR ? IS NULL OR p.breed LIKE ? OR ? LIKE CONCAT('%', p.breed, '%'))
            AND (p.color IS NULL OR ? IS NULL OR p.color LIKE ? OR ? LIKE CONCAT('%', p.color, '%'))`,
           [
-            otherType, species, currentCity, 
+            otherType, species, 
+            city, city,
             gender, gender, 
             breed, `%${breed}%`, breed,
             color, `%${color}%`, color
@@ -196,24 +197,72 @@ async function startServer() {
                );
                
                if (existing.length === 0) {
-                 await pool.query(
-                   "INSERT INTO Matches (lost_report_id, found_report_id, match_score) VALUES (?, ?, ?)",
-                   [lost_report_id, found_report_id, 0.85]
-                 );
+                    // Calculate match score
+                    let matchScore = 0.65; // Base score for species/breed/color/gender match
+                    
+                    // Location-based bonus/penalty
+                    const currentLat = req.body.lat;
+                    const currentLng = req.body.lng;
+                    const matchLat = match.latitude;
+                    const matchLng = match.longitude;
+
+                    if (currentLat && currentLng && matchLat && matchLng) {
+                      // Haversine distance
+                      const R = 6371; // km
+                      const dLat = (Number(matchLat) - Number(currentLat)) * Math.PI / 180;
+                      const dLon = (Number(matchLng) - Number(currentLng)) * Math.PI / 180;
+                      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                Math.cos(Number(currentLat) * Math.PI / 180) * Math.cos(Number(matchLat) * Math.PI / 180) * 
+                                Math.sin(dLon/2) * Math.sin(dLon/2);
+                      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                      const distance = R * c;
+
+                      if (distance < 2) matchScore += 0.30; // Very close
+                      else if (distance < 5) matchScore += 0.20; // Close
+                      else if (distance < 10) matchScore += 0.10; // Moderate
+                      else matchScore -= 0.15; // Far
+                    } else {
+                      // Fallback to text-based location match if no GPS
+                      if (city && match.city && city.toLowerCase() === match.city.toLowerCase()) {
+                        matchScore += 0.15;
+                        if (area && match.area && (area.toLowerCase().includes(match.area.toLowerCase()) || match.area.toLowerCase().includes(area.toLowerCase()))) {
+                          matchScore += 0.10; // Area bonus
+                        }
+                      }
+                    }
+
+                   // Cap score
+                   matchScore = Math.min(0.98, Math.max(0.1, matchScore));
+
+                   await pool.query(
+                     "INSERT INTO Matches (lost_report_id, found_report_id, match_score) VALUES (?, ?, ?)",
+                     [lost_report_id, found_report_id, matchScore]
+                   );
+
+                   // If high confidence match, move both cases to UNDER_REVIEW
+                   if (matchScore >= 0.80) {
+                     await pool.query(
+                       "UPDATE CaseTable SET status = 'UNDER_REVIEW' WHERE case_id IN (?, ?)",
+                       [caseId, match.case_id]
+                     );
+                     console.log(`Auto-review: Cases ${caseId} and ${match.case_id} moved to UNDER_REVIEW due to ${Math.round(matchScore*100)}% match.`);
+                   }
+
+                  // 2. Create notification for the existing case owner only for NEW matches
+                  await pool.query(
+                    "INSERT INTO Notification (user_id, message, created_at) VALUES (?, ?, UTC_TIMESTAMP())",
+                    [match.user_id, `Match Alert: A high-confidence match was found for your ${species}! Your case is now Under Review while we verify the details.`]
+                  );
                }
              }
-
-             // 2. Create notification for the existing case owner
-             await pool.query(
-               "INSERT INTO Notification (user_id, message, created_at) VALUES (?, ?, UTC_TIMESTAMP())",
-               [match.user_id, `Match Alert: A ${species} ${breed || ''} was just reported in ${currentCity}.`]
-             );
           }
-          // 3. Create notification for the new reporter
-          await pool.query(
-            "INSERT INTO Notification (user_id, message, created_at) VALUES (?, ?, UTC_TIMESTAMP())",
-            [decoded.userId, `Success! We found ${potentialMatches.length} highly relevant matches in ${currentCity}. Check the Matches tab.`]
-          );
+          // 3. Create notification for the new reporter if any matches were found
+          if (potentialMatches.length > 0) {
+            await pool.query(
+              "INSERT INTO Notification (user_id, message, created_at) VALUES (?, ?, UTC_TIMESTAMP())",
+              [decoded.userId, `Success! We found ${potentialMatches.length} matches. Your case is Under Review while our team verifies the best hit.`]
+            );
+          }
         }
       } catch (matchErr) {
         console.error("Matching engine error:", matchErr);
@@ -312,12 +361,13 @@ async function startServer() {
       console.log(`[DEBUG] my-cases: type=${type}, role=${userRole}, isAdmin=${isAdmin}`);
       
       let query = `
-        SELECT c.*, p.species, p.breed, p.color, p.gender, p.age, l.city, l.area, ph.photo_url 
+        SELECT c.*, p.species, p.breed, p.color, p.gender, p.age, l.city, l.area, ph.photo_url, lr.reward
         FROM CaseTable c
         LEFT JOIN Reporter r ON c.reporter_id = r.reporter_id
         LEFT JOIN PetProfile p ON c.pet_id = p.pet_id
         LEFT JOIN Location l ON c.location_id = l.location_id
         LEFT JOIN CasePhoto ph ON c.case_id = ph.case_id AND ph.is_primary = 1
+        LEFT JOIN LostReport lr ON c.case_id = lr.case_id
         WHERE 1=1
       `;
       
@@ -442,15 +492,15 @@ async function startServer() {
   app.get("/api/cases/:id", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
-    const token = authHeader.split(" ")[1];
-
     try {
-      const decoded: any = jwt.verify(token, JWT_SECRET);
-      
-      // Get role from DB for security
-      const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
-      const isAdmin = (users[0]?.role || decoded.role)?.toUpperCase() === 'ADMIN';
+      let decoded: any = null;
+      let isAdmin = false;
+      if (authHeader) {
+        const token = authHeader.split(" ")[1];
+        decoded = jwt.verify(token, JWT_SECRET);
+        const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
+        isAdmin = (users[0]?.role || decoded.role)?.toUpperCase() === 'ADMIN';
+      }
 
       let query = `
         SELECT 
@@ -461,7 +511,9 @@ async function startServer() {
           fr.found_condition,
           u.name as reporter_name, 
           u.email as reporter_email, 
-          u.phone as reporter_phone
+          u.phone as reporter_phone,
+          r.user_id as reporter_user_id,
+          l.latitude, l.longitude
         FROM CaseTable c
         JOIN PetProfile p ON c.pet_id = p.pet_id
         JOIN Location l ON c.location_id = l.location_id
@@ -478,7 +530,21 @@ async function startServer() {
       
       // Get all photos
       const [photos]: any = await pool.query("SELECT photo_url FROM CasePhoto WHERE case_id = ?", [req.params.id]);
-      res.json({ ...rows[0], photos: photos.map((p: any) => p.photo_url) });
+      
+      // Check for confirmed matches involving this case
+      const [confirmedMatch]: any = await pool.query(`
+        SELECT m.match_id 
+        FROM Matches m 
+        JOIN LostReport lr ON m.lost_report_id = lr.lost_report_id 
+        JOIN FoundReport fr ON m.found_report_id = fr.found_report_id 
+        WHERE (lr.case_id = ? OR fr.case_id = ?) AND m.match_status = 'CONFIRMED'
+      `, [req.params.id, req.params.id]);
+
+      res.json({ 
+        ...rows[0], 
+        photos: photos.map((p: any) => p.photo_url),
+        has_confirmed_match: confirmedMatch.length > 0 
+      });
     } catch (err) {
       res.status(401).json({ error: "Invalid token" });
     }
@@ -492,7 +558,7 @@ async function startServer() {
     const token = authHeader.split(" ")[1];
     const { 
       petName, species, breed, gender, age, color, marks, 
-      location, date, time, description, reward, condition, photos,
+      city, area, date, time, description, reward, condition, photos,
       petId
     } = req.body;
 
@@ -527,7 +593,10 @@ async function startServer() {
       const { pet_id, location_id } = caseRows[0];
 
       // 2. Update Location
-      await connection.query("UPDATE Location SET city = ?, area = ? WHERE location_id = ?", [location, location, location_id]);
+      await connection.query(
+        "UPDATE Location SET city = ?, area = ?, latitude = ?, longitude = ? WHERE location_id = ?", 
+        [city, area, req.body.lat || null, req.body.lng || null, location_id]
+      );
 
       // 3. Update PetProfile
       await connection.query(
@@ -575,17 +644,20 @@ async function startServer() {
         if (caseData) {
           const otherType = String(caseData.case_type).toUpperCase() === 'LOST' ? 'FOUND' : 'LOST';
           const [potentialMatches]: any = await pool.query(
-            `SELECT c.case_id, r.user_id 
-             FROM CaseTable c 
-             JOIN PetProfile p ON c.pet_id = p.pet_id 
-             JOIN Reporter r ON c.reporter_id = r.reporter_id
-             JOIN Location l ON c.location_id = l.location_id
-             WHERE c.case_type = ? 
-             AND p.species = ? 
-             AND c.status = 'REPORTED'
-             AND LOWER(l.city) = LOWER(?)
-             AND (p.gender = ? OR p.gender = 'UNKNOWN' OR ? = 'UNKNOWN')`,
-            [otherType, caseData.species, caseData.city, caseData.gender, caseData.gender]
+            `SELECT 
+              c.case_id, r.user_id, p.species, p.breed, p.color, p.gender,
+              l.latitude, l.longitude
+            FROM CaseTable c
+            JOIN PetProfile p ON c.pet_id = p.pet_id
+            JOIN Location l ON c.location_id = l.location_id
+            JOIN Reporter r ON c.reporter_id = r.reporter_id
+            WHERE c.case_type = ? 
+            AND p.species = ? 
+            AND c.status = 'REPORTED'
+            AND (p.gender = ? OR p.gender = 'UNKNOWN' OR ? = 'UNKNOWN')
+            AND (p.breed IS NULL OR ? IS NULL OR p.breed LIKE ? OR ? LIKE CONCAT('%', p.breed, '%'))
+            AND (p.color IS NULL OR ? IS NULL OR p.color LIKE ? OR ? LIKE CONCAT('%', p.color, '%'))`,
+            [otherType, caseData.species, caseData.gender, caseData.gender, caseData.breed, `%${caseData.breed}%`, caseData.breed, caseData.color, `%${caseData.color}%`, caseData.color]
           );
 
           for (const match of potentialMatches) {
@@ -596,9 +668,45 @@ async function startServer() {
               const lost_report_id = lostRows[0].lost_report_id;
               const found_report_id = foundRows[0].found_report_id;
               const [existing]: any = await pool.query("SELECT * FROM Matches WHERE lost_report_id = ? AND found_report_id = ?", [lost_report_id, found_report_id]);
+              
               if (existing.length === 0) {
-                await pool.query("INSERT INTO Matches (lost_report_id, found_report_id, match_score) VALUES (?, ?, ?)", [lost_report_id, found_report_id, 0.82]);
-                await pool.query("INSERT INTO Notification (user_id, message) VALUES (?, ?)", [match.user_id, `New Match: A potential match was found after a report was updated!`]);
+                // Calculate match score using robust logic
+                let matchScore = 0.65;
+                
+                // Location check
+                const currentLat = req.body.lat;
+                const currentLng = req.body.lng;
+                if (currentLat && currentLng && match.latitude && match.longitude) {
+                  const R = 6371;
+                  const dLat = (Number(match.latitude) - Number(currentLat)) * Math.PI / 180;
+                  const dLon = (Number(match.longitude) - Number(currentLng)) * Math.PI / 180;
+                  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                            Math.cos(Number(currentLat) * Math.PI / 180) * Math.cos(Number(match.latitude) * Math.PI / 180) * 
+                            Math.sin(dLon/2) * Math.sin(dLon/2);
+                  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                  const distance = R * c;
+
+                  if (distance < 2) matchScore += 0.30;
+                  else if (distance < 5) matchScore += 0.20;
+                  else if (distance < 10) matchScore += 0.10;
+                  else matchScore -= 0.15;
+                } else {
+                  if (city && match.city && city.toLowerCase() === match.city.toLowerCase()) {
+                    matchScore += 0.15;
+                    if (area && match.area && (area.toLowerCase().includes(match.area.toLowerCase()) || match.area.toLowerCase().includes(area.toLowerCase()))) {
+                      matchScore += 0.10;
+                    }
+                  }
+                }
+
+                matchScore = Math.min(0.98, Math.max(0.1, matchScore));
+                await pool.query("INSERT INTO Matches (lost_report_id, found_report_id, match_score) VALUES (?, ?, ?)", [lost_report_id, found_report_id, matchScore]);
+                
+                if (matchScore >= 0.80) {
+                  await pool.query("UPDATE CaseTable SET status = 'UNDER_REVIEW' WHERE case_id IN (?, ?)", [req.params.id, match.case_id]);
+                }
+
+                await pool.query("INSERT INTO Notification (user_id, message) VALUES (?, ?)", [match.user_id, `Match Update: A new potential hit was found after a report update. Your case is now Under Review.`]);
               }
             }
           }
@@ -846,14 +954,20 @@ async function startServer() {
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
       const [pets]: any = await pool.query(`
-        SELECT p.*, ph.photo_url 
+        SELECT p.*
         FROM PetProfile p 
-        LEFT JOIN PetPhoto ph ON p.pet_id = ph.pet_id AND ph.is_primary = 1 
         WHERE p.pet_id = ? AND p.owner_id = ?
       `, [req.params.id, decoded.userId]);
       
       if (pets.length === 0) return res.status(404).json({ error: "Pet not found" });
-      res.json(pets[0]);
+
+      const [photos]: any = await pool.query("SELECT photo_url, is_primary FROM PetPhoto WHERE pet_id = ?", [req.params.id]);
+      
+      res.json({
+        ...pets[0],
+        photos: photos.map((p: any) => p.photo_url),
+        photo_url: photos.find((p: any) => p.is_primary)?.photo_url || null
+      });
     } catch (err) {
       res.status(401).json({ error: "Invalid token" });
     }
@@ -916,11 +1030,18 @@ async function startServer() {
       
       if (result.affectedRows === 0) return res.status(404).json({ error: "Pet not found or unauthorized" });
 
-      // Update image if provided
-      if (image) {
-        // Mark existing primary photos as not primary
+      // Update images if provided
+      if (req.body.images && Array.isArray(req.body.images)) {
+        // Delete old photos if we want to replace them, OR just add new ones.
+        // Usually for 'Update', users expect to manage the list. 
+        // For simplicity, let's replace them if 'images' is sent.
+        await pool.query("DELETE FROM PetPhoto WHERE pet_id = ?", [req.params.id]);
+        for (let i = 0; i < req.body.images.length; i++) {
+          await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, ?)", 
+            [req.params.id, req.body.images[i], i === 0 ? 1 : 0]);
+        }
+      } else if (image) {
         await pool.query("UPDATE PetPhoto SET is_primary = 0 WHERE pet_id = ?", [req.params.id]);
-        // Insert new primary photo
         await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, 1)", [req.params.id, image]);
       }
 
@@ -949,7 +1070,12 @@ async function startServer() {
       
       const petId = result.insertId;
 
-      if (image) {
+      if (req.body.images && Array.isArray(req.body.images)) {
+        for (let i = 0; i < req.body.images.length; i++) {
+          await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, ?)", 
+            [petId, req.body.images[i], i === 0 ? 1 : 0]);
+        }
+      } else if (image) {
         await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, 1)", [petId, image]);
       }
 
@@ -1047,7 +1173,7 @@ async function startServer() {
     }
   });
 
-  // Get all matches for the user
+  // Get all matches (all for admin, personal for user)
   app.get("/api/matches", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
     const authHeader = req.headers.authorization;
@@ -1056,8 +1182,10 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      // We need to find matches where the user is either the LOST reporter or the FOUND reporter
-      const query = `
+      const isAdmin = decoded.role?.toUpperCase() === "ADMIN";
+
+      // Base query for matches with all necessary joins
+      let query = `
         SELECT 
           m.match_id, m.match_score, m.match_status, m.created_at as matched_at,
           l_rep.user_id as lost_user_id, f_rep.user_id as found_user_id,
@@ -1065,7 +1193,8 @@ async function startServer() {
           l_case.case_id as lost_id, l_pet.species as lost_species, l_pet.breed as lost_breed, 
           l_pet.gender as lost_gender, l_pet.age as lost_age, l_pet.color as lost_color,
           l_pet.distinguishing_marks as lost_marks,
-          l_loc.city as lost_city, l_case.report_date as lost_date,
+          l_loc.city as lost_city, l_loc.latitude as lost_lat, l_loc.longitude as lost_lng,
+          l_case.report_date as lost_date,
           l_case.status as lost_status,
           (SELECT photo_url FROM CasePhoto WHERE case_id = l_case.case_id LIMIT 1) as lost_img,
           l_user.name as lost_user_name, l_user.email as lost_user_email, l_user.phone as lost_user_phone,
@@ -1073,7 +1202,8 @@ async function startServer() {
           f_case.case_id as found_id, f_pet.species as found_species, f_pet.breed as found_breed,
           f_pet.gender as found_gender, f_pet.age as found_age, f_pet.color as found_color,
           f_pet.distinguishing_marks as found_marks,
-          f_loc.city as found_city, f_case.report_date as found_date,
+          f_loc.city as found_city, f_loc.latitude as found_lat, f_loc.longitude as found_lng,
+          f_case.report_date as found_date,
           f_case.status as found_status,
           (SELECT photo_url FROM CasePhoto WHERE case_id = f_case.case_id LIMIT 1) as found_img,
           f_user.name as found_user_name, f_user.email as found_user_email, f_user.phone as found_user_phone
@@ -1091,11 +1221,17 @@ async function startServer() {
         JOIN Location f_loc ON f_case.location_id = f_loc.location_id
         JOIN Reporter f_rep ON f_case.reporter_id = f_rep.reporter_id
         JOIN User f_user ON f_rep.user_id = f_user.user_id
-        
-        WHERE l_rep.user_id = ? OR f_rep.user_id = ?
-        ORDER BY m.match_score DESC
       `;
-      const [rows]: any = await pool.query(query, [decoded.userId, decoded.userId]);
+
+      let params: any[] = [];
+      if (!isAdmin) {
+        query += ` WHERE l_rep.user_id = ? OR f_rep.user_id = ? `;
+        params = [decoded.userId, decoded.userId];
+      }
+
+      query += ` ORDER BY m.match_score DESC `;
+
+      const [rows]: any = await pool.query(query, params);
       res.json(rows);
     } catch (err: any) {
       console.error("Fetch Matches Error:", err);
@@ -1183,7 +1319,9 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      const query = `
+      const isAdmin = decoded.role?.toUpperCase() === "ADMIN";
+
+      let query = `
         SELECT 
           m.match_id, m.match_score, m.match_status, m.created_at as matched_at,
           l_rep.user_id as lost_user_id, f_rep.user_id as found_user_id,
@@ -1212,9 +1350,16 @@ async function startServer() {
         JOIN PetProfile f_pet ON f_case.pet_id = f_pet.pet_id
         JOIN Location f_loc ON f_case.location_id = f_loc.location_id
         JOIN Reporter f_rep ON f_case.reporter_id = f_rep.reporter_id
-        WHERE m.match_id = ? AND (l_rep.user_id = ? OR f_rep.user_id = ?)
+        WHERE m.match_id = ?
       `;
-      const [rows]: any = await pool.query(query, [req.params.id, decoded.userId, decoded.userId]);
+
+      let params = [req.params.id];
+      if (!isAdmin) {
+        query += ` AND (l_rep.user_id = ? OR f_rep.user_id = ?) `;
+        params.push(decoded.userId, decoded.userId);
+      }
+
+      const [rows]: any = await pool.query(query, params);
       if (rows.length === 0) return res.status(404).json({ error: "Match not found or unauthorized" });
       res.json(rows[0]);
     } catch (err: any) {
@@ -1222,6 +1367,7 @@ async function startServer() {
     }
   });
 
+  // Update match status (Review Match)
   // Update match status (Review Match)
   app.put("/api/matches/:id/status", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
@@ -1232,9 +1378,10 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
+      const isAdmin = decoded.role?.toUpperCase() === "ADMIN";
       
-      // Verify ownership
-      const [matchRows]: any = await pool.query(`
+      // Verify ownership or admin
+      let authQuery = `
         SELECT m.*, l_rep.user_id as lost_user_id, f_rep.user_id as found_user_id,
                l_case.case_id as lost_case_id, f_case.case_id as found_case_id
         FROM Matches m
@@ -1244,8 +1391,16 @@ async function startServer() {
         JOIN FoundReport fr ON m.found_report_id = fr.found_report_id
         JOIN CaseTable f_case ON fr.case_id = f_case.case_id
         JOIN Reporter f_rep ON f_case.reporter_id = f_rep.reporter_id
-        WHERE m.match_id = ? AND (l_rep.user_id = ? OR f_rep.user_id = ?)
-      `, [req.params.id, decoded.userId, decoded.userId]);
+        WHERE m.match_id = ?
+      `;
+
+      let authParams = [req.params.id];
+      if (!isAdmin) {
+        authQuery += ` AND (l_rep.user_id = ? OR f_rep.user_id = ?) `;
+        authParams.push(decoded.userId, decoded.userId);
+      }
+
+      const [matchRows]: any = await pool.query(authQuery, authParams);
 
       if (matchRows.length === 0) return res.status(403).json({ error: "Unauthorized to review this match" });
 
@@ -1256,6 +1411,12 @@ async function startServer() {
         // Update both cases to MATCH_FOUND
         await pool.query(
           "UPDATE CaseTable SET status = 'MATCH_FOUND' WHERE case_id IN (?, ?)", 
+          [match.lost_case_id, match.found_case_id]
+        );
+      } else if (status === 'REJECTED') {
+        // Move cases back to REPORTED if they were UNDER_REVIEW
+        await pool.query(
+          "UPDATE CaseTable SET status = 'REPORTED' WHERE case_id IN (?, ?) AND status = 'UNDER_REVIEW'",
           [match.lost_case_id, match.found_case_id]
         );
       }
@@ -1314,6 +1475,83 @@ async function startServer() {
     } catch (err: any) {
       console.error("Recovery Error:", err);
       res.status(500).json({ error: "Failed to mark as recovered", details: err.message });
+    }
+  });
+
+  // Delete match (Admin only)
+  app.delete("/api/matches/:id", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (decoded.role?.toUpperCase() !== "ADMIN") {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+      }
+
+      await pool.query("DELETE FROM Matches WHERE match_id = ?", [req.params.id]);
+      res.json({ message: "Match deleted successfully" });
+    } catch (err: any) {
+      console.error("Delete Match Error:", err);
+      res.status(500).json({ error: "Failed to delete match" });
+    }
+  });
+
+  // Public Cases Stats
+  app.get("/api/public/cases/stats", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    try {
+      const [all]: any = await pool.query("SELECT COUNT(*) as count FROM CaseTable WHERE status IN ('REPORTED', 'UNDER_REVIEW')");
+      const [lost]: any = await pool.query("SELECT COUNT(*) as count FROM CaseTable WHERE case_type = 'LOST' AND status IN ('REPORTED', 'UNDER_REVIEW')");
+      const [found]: any = await pool.query("SELECT COUNT(*) as count FROM CaseTable WHERE case_type = 'FOUND' AND status IN ('REPORTED', 'UNDER_REVIEW')");
+      res.json({ all: all[0].count, lost: lost[0].count, found: found[0].count });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch public stats" });
+    }
+  });
+
+  // Public Cases List
+  app.get("/api/public/cases", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const { limit = 10, offset = 0, type = 'ALL', search = '' } = req.query;
+    
+    try {
+      let query = `
+        SELECT 
+          c.*, p.name as pet_name, p.species, p.breed, p.color, p.gender, p.age,
+          l.city, l.area, l.latitude, l.longitude,
+          (SELECT photo_url FROM CasePhoto WHERE case_id = c.case_id LIMIT 1) as photo_url,
+          lr.reward,
+          fr.found_condition
+        FROM CaseTable c
+        JOIN PetProfile p ON c.pet_id = p.pet_id
+        JOIN Location l ON c.location_id = l.location_id
+        LEFT JOIN LostReport lr ON c.case_id = lr.case_id
+        LEFT JOIN FoundReport fr ON c.case_id = fr.case_id
+        WHERE c.status IN ('REPORTED', 'UNDER_REVIEW')
+      `;
+      const params: any[] = [];
+
+      if (type !== 'ALL') {
+        query += " AND c.case_type = ? ";
+        params.push(type);
+      }
+
+      if (search) {
+        query += " AND (p.breed LIKE ? OR l.city LIKE ? OR l.area LIKE ?) ";
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      query += " ORDER BY c.report_date DESC LIMIT ? OFFSET ? ";
+      params.push(Number(limit), Number(offset));
+
+      const [rows]: any = await pool.query(query, params);
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Public Cases Error:", err);
+      res.status(500).json({ error: "Failed to fetch public cases" });
     }
   });
 

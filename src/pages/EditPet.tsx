@@ -30,7 +30,7 @@ export default function EditPet() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<string[]>([]);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -60,8 +60,10 @@ export default function EditPet() {
             color: data.color || "",
             distinguishing_marks: data.distinguishing_marks || ""
           });
-          if (data.photo_url) {
-            setImagePreview(data.photo_url);
+          if (data.photos) {
+            setPhotos(data.photos);
+          } else if (data.photo_url) {
+            setPhotos([data.photo_url]);
           }
         }
       } catch (err) {
@@ -75,14 +77,21 @@ export default function EditPet() {
   }, [id]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files) {
+      const newPhotos = Array.from(files);
+      newPhotos.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPhotos(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,7 +108,7 @@ export default function EditPet() {
         },
         body: JSON.stringify({
           ...formData,
-          image: imagePreview?.startsWith("data:") ? imagePreview : null // Only send if it's a new base64 image
+          images: photos
         })
       });
 
@@ -269,57 +278,39 @@ export default function EditPet() {
                 <h2 className="font-bold text-lg text-gray-900 dark:text-white">Pet Photo</h2>
              </div>
              <CardContent className="p-6 space-y-6">
-                <div className="relative group">
-                  <div 
-                    className={`w-full aspect-[4/5] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-4 bg-gray-50/50 dark:bg-slate-900/30 ${
-                      imagePreview ? "border-rose-200 dark:border-rose-900/30" : "border-gray-200 dark:border-gray-800 hover:border-rose-300 dark:hover:border-rose-800"
-                    } relative overflow-hidden`}
-                  >
-                    {imagePreview ? (
-                      <>
-                        <img src={imagePreview} className="w-full h-full object-cover" alt="Preview" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                           <div className="flex flex-col gap-2">
-                             <Button 
-                               type="button"
-                               size="sm" 
-                               variant="secondary" 
-                               className="rounded-xl font-bold h-10 px-4 bg-white/90"
-                               onClick={() => document.getElementById('photo-upload')?.click()}
-                             >
-                               Change Photo
-                             </Button>
-                             <Button 
-                               type="button"
-                               size="sm" 
-                               variant="destructive" 
-                               className="rounded-xl font-bold h-10 px-4"
-                               onClick={() => setImagePreview(null)}
-                             >
-                               Remove Photo
-                             </Button>
-                           </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-950/20 flex items-center justify-center text-rose-500">
-                          <Upload className="w-8 h-8" />
-                        </div>
-                        <div className="text-center px-4">
-                          <p className="font-bold text-gray-700 dark:text-gray-300">Click to upload photo</p>
-                          <p className="text-xs text-gray-500 mt-1">High resolution JPG or PNG</p>
-                        </div>
-                      </>
-                    )}
-                    <input 
-                      id="photo-upload"
-                      type="file" 
-                      className="absolute inset-0 opacity-0 cursor-pointer" 
-                      onChange={handleImageChange}
-                      accept="image/*"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {photos.map((photo, index) => (
+                    <div key={index} className="relative aspect-square rounded-xl overflow-hidden group border border-gray-100 dark:border-gray-800 shadow-sm">
+                      <img src={photo} className="w-full h-full object-cover" alt={`Preview ${index}`} />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                         <Button 
+                           type="button"
+                           size="sm" 
+                           variant="destructive" 
+                           className="rounded-xl font-bold h-8 w-8 p-0"
+                           onClick={() => removePhoto(index)}
+                         >
+                           <X className="w-4 h-4" />
+                         </Button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {photos.length < 6 && (
+                    <div className="relative aspect-square rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-800 hover:border-rose-300 dark:hover:border-rose-800 transition-all flex flex-col items-center justify-center gap-2 bg-gray-50/50 dark:bg-slate-900/30 group cursor-pointer">
+                      <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center text-gray-400 group-hover:text-rose-500 transition-colors shadow-sm">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Add Photo</span>
+                      <input 
+                        type="file" 
+                        multiple
+                        className="absolute inset-0 opacity-0 cursor-pointer" 
+                        onChange={handleImageChange}
+                        accept="image/*"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100/50 dark:border-amber-900/20 space-y-2">
