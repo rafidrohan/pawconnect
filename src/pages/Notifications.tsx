@@ -176,7 +176,7 @@ export default function Notifications() {
         </div>
 
         {/* Sidebar Section */}
-        <div className="lg:col-span-4 space-y-6 sticky top-28">
+        <div className="lg:col-span-4 space-y-6 sticky top-28 mt-12">
           <Card className="border-0 shadow-sm bg-white dark:bg-[#1A2234] rounded-2xl overflow-hidden">
             <div className="p-5 border-b border-gray-50 dark:border-gray-800/50">
               <h3 className="font-bold text-gray-900 dark:text-white">Filter Notifications</h3>

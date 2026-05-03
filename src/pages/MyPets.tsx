@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,74 +25,66 @@ import {
   AlertCircle,
   ShieldCheck,
   FileText,
-  MapPin
+  MapPin,
+  Loader2
 } from "lucide-react";
 import { motion } from "motion/react";
-
-const stats = [
-  { label: 'Total Pets', value: '4', sub: 'All your registered pets', icon: PawPrint, color: 'text-green-600', bg: 'bg-green-50/50 dark:bg-green-900/10', iconBg: 'bg-green-100 dark:bg-green-900/20', lineColor: 'bg-green-600' },
-  { label: 'Active Pets', value: '3', sub: 'Up to date profiles', icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-50/50 dark:bg-blue-900/10', iconBg: 'bg-blue-100 dark:bg-blue-900/20', lineColor: 'bg-blue-600' },
-  { label: 'Used in Cases', value: '2', sub: 'In lost or found reports', icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50/50 dark:bg-amber-900/10', iconBg: 'bg-amber-100 dark:bg-amber-900/20', lineColor: 'bg-amber-600' },
-  { label: 'Need Update', value: '1', sub: 'Information outdated', icon: AlertCircle, color: 'text-purple-600', bg: 'bg-purple-50/50 dark:bg-purple-900/10', iconBg: 'bg-purple-100 dark:bg-purple-900/20', lineColor: 'bg-purple-600' },
-];
-
-const myPets = [
-  {
-    id: 1,
-    name: "Bruno",
-    gender: "male",
-    breed: "Golden Retriever",
-    age: "2 Years",
-    color: "Golden",
-    colorHex: "#C19A6B",
-    weight: "28 kg",
-    status: "Active",
-    lastUpdated: "2 May 2025",
-    image: "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400"
-  },
-  {
-    id: 2,
-    name: "Luna",
-    gender: "female",
-    breed: "Domestic Shorthair",
-    age: "1 Year",
-    color: "Gray & White",
-    colorHex: "#808080",
-    weight: "4.2 kg",
-    status: "Active",
-    lastUpdated: "25 Apr 2025",
-    image: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400"
-  },
-  {
-    id: 3,
-    name: "Max",
-    gender: "male",
-    breed: "German Shepherd",
-    age: "3 Years",
-    color: "Black & Tan",
-    colorHex: "#3D2B1F",
-    weight: "32 kg",
-    status: "Active",
-    lastUpdated: "10 Apr 2025",
-    image: "https://images.unsplash.com/photo-1589944172325-1329f6356073?auto=format&fit=crop&w=400"
-  },
-  {
-    id: 4,
-    name: "Milo",
-    gender: "male",
-    breed: "Orange Tabby",
-    age: "1.5 Years",
-    color: "Orange",
-    colorHex: "#FFA500",
-    weight: "4.8 kg",
-    status: "Update Needed",
-    lastUpdated: "15 Feb 2025",
-    image: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=400"
-  }
-];
+import { getApiUrl } from "@/lib/api";
 
 export default function MyPets() {
   const navigate = useNavigate();
+  const [pets, setPets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const fetchPets = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(getApiUrl("/api/my-pets"), {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setPets(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to fetch pets", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Are you sure you want to delete this pet profile? This action cannot be undone.")) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(getApiUrl(`/api/my-pets/${id}`), {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setPets(pets.filter(p => p.pet_id !== id));
+      }
+    } catch (err) {
+      console.error("Failed to delete pet", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPets();
+  }, []);
+
+  const filteredPets = pets.filter(pet => 
+    pet.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    pet.breed?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const stats = [
+    { label: 'Total Pets', value: pets.length.toString(), sub: 'All your registered pets', icon: PawPrint, color: 'text-green-600', bg: 'bg-green-50/50 dark:bg-green-900/10', iconBg: 'bg-green-100 dark:bg-green-900/20', lineColor: 'bg-green-600' },
+    { label: 'Active Pets', value: pets.length.toString(), sub: 'Up to date profiles', icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-50/50 dark:bg-blue-900/10', iconBg: 'bg-blue-100 dark:bg-blue-900/20', lineColor: 'bg-blue-600' },
+    { label: 'Used in Cases', value: '0', sub: 'In lost or found reports', icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50/50 dark:bg-amber-900/10', iconBg: 'bg-amber-100 dark:bg-amber-900/20', lineColor: 'bg-amber-600' },
+    { label: 'Need Update', value: '0', sub: 'Information outdated', icon: AlertCircle, color: 'text-purple-600', bg: 'bg-purple-50/50 dark:bg-purple-900/10', iconBg: 'bg-purple-100 dark:bg-purple-900/20', lineColor: 'bg-purple-600' },
+  ];
   return (
     <div className="space-y-8 pb-12">
       {/* Header Section */}
@@ -154,6 +146,8 @@ export default function MyPets() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input 
               placeholder="Search pets by name..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 h-11 border-gray-100 dark:border-gray-800 rounded-xl focus-visible:ring-rose-500/20"
             />
           </div>
@@ -175,120 +169,147 @@ export default function MyPets() {
         </div>
       </div>
 
-      {/* Pets Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
-        {myPets.map((pet, i) => (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 + i * 0.1 }}
-            key={pet.id}
-          >
-            <Card className="border-0 shadow-sm bg-white dark:bg-[#1A2234] rounded-[32px] overflow-hidden group hover:shadow-2xl hover:shadow-gray-200/40 dark:hover:shadow-none transition-all duration-500 h-full flex flex-col">
-              <div className="relative h-[380px] overflow-hidden m-3 rounded-[28px] shrink-0">
-                <img 
-                  src={pet.image} 
-                  alt={pet.name} 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
-                
-                <Badge className={`absolute top-4 left-4 border font-bold px-4 py-1.5 rounded-xl shadow-sm ${
-                  pet.status === 'Active' 
-                    ? 'bg-[#f0fdf4] text-[#15803d] border-[#dcfce7] dark:bg-green-950/30 dark:border-green-800' 
-                    : 'bg-[#fffbeb] text-[#b45309] border-[#fef3c7] dark:bg-amber-950/30 dark:border-amber-800'
-                }`}>
-                  {pet.status}
-                </Badge>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+          <Loader2 className="w-12 h-12 text-rose-500 animate-spin" />
+          <p className="text-gray-500 font-bold">Loading your pet profiles...</p>
+        </div>
+      ) : filteredPets.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[400px] bg-white dark:bg-[#1A2234] rounded-[40px] border-2 border-dashed border-gray-100 dark:border-gray-800">
+           <div className="w-20 h-20 rounded-full bg-gray-50 dark:bg-slate-800 flex items-center justify-center text-gray-300 mb-4">
+              <PawPrint className="w-10 h-10" />
+           </div>
+           <h3 className="text-xl font-bold text-gray-900 dark:text-white">No pets found</h3>
+           <p className="text-gray-500 dark:text-gray-400 font-medium mt-2 mb-6">
+             {searchQuery ? "No pets match your search criteria." : "You haven't registered any pets yet."}
+           </p>
+           {!searchQuery && (
+             <Button 
+               className="bg-[#ff6b6b] hover:bg-[#ff5252] text-white font-bold rounded-xl px-8"
+               onClick={() => navigate('/app/my-pets/add')}
+             >
+               Add Your First Pet
+             </Button>
+           )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
+          {filteredPets.map((pet, i) => (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 + i * 0.1 }}
+              key={pet.pet_id}
+            >
+              <Card className="border-0 shadow-sm bg-white dark:bg-[#1A2234] rounded-[32px] overflow-hidden group hover:shadow-2xl hover:shadow-gray-200/40 dark:hover:shadow-none transition-all duration-500 h-full flex flex-col">
+                <div className="relative h-[380px] overflow-hidden m-3 rounded-[28px] shrink-0">
+                  <img 
+                    src={pet.photo_url || "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=400"} 
+                    alt={pet.name} 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  
+                  <Badge className={`absolute top-4 left-4 border font-bold px-4 py-1.5 rounded-xl shadow-sm bg-[#f0fdf4] text-[#15803d] border-[#dcfce7] dark:bg-green-950/30 dark:border-green-800`}>
+                    Active
+                  </Badge>
 
-                <Button variant="secondary" size="icon" className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-0 shadow-sm">
-                  <MoreVertical className="w-5 h-5" />
-                </Button>
+                  <Button variant="secondary" size="icon" className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-0 shadow-sm">
+                    <MoreVertical className="w-5 h-5" />
+                  </Button>
 
-                <div className="absolute -bottom-2 -right-2 p-4">
-                   <div className="w-14 h-14 rounded-full bg-[#ff6b6b] text-white flex items-center justify-center shadow-xl border-4 border-white dark:border-[#1A2234] transform group-hover:rotate-12 transition-transform duration-300">
-                      <Camera className="w-6 h-6" />
-                   </div>
+                  <div className="absolute -bottom-2 -right-2 p-4">
+                     <div className="w-14 h-14 rounded-full bg-[#ff6b6b] text-white flex items-center justify-center shadow-xl border-4 border-white dark:border-[#1A2234] transform group-hover:rotate-12 transition-transform duration-300">
+                        <Camera className="w-6 h-6" />
+                     </div>
+                  </div>
                 </div>
-              </div>
 
-              <CardContent className="p-7 pt-4 space-y-6">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">{pet.name}</h3>
-                    {pet.gender === 'male' ? (
-                      <div className="w-7 h-7 rounded-full bg-[#eff6ff] dark:bg-blue-900/30 flex items-center justify-center text-[#3b82f6]">
-                        <span className="text-lg font-bold">♂</span>
+                <CardContent className="p-7 pt-4 space-y-6 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">{pet.name}</h3>
+                      {pet.gender === 'MALE' ? (
+                        <div className="w-7 h-7 rounded-full bg-[#eff6ff] dark:bg-blue-900/30 flex items-center justify-center text-[#3b82f6]">
+                          <span className="text-lg font-bold">♂</span>
+                        </div>
+                      ) : pet.gender === 'FEMALE' ? (
+                        <div className="w-7 h-7 rounded-full bg-[#fff1f2] dark:bg-rose-900/30 flex items-center justify-center text-[#f43f5e]">
+                          <span className="text-lg font-bold">♀</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="inline-flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-gray-800">
+                       <FileText className="w-4 h-4 text-gray-400" />
+                       <span className="text-sm font-bold text-gray-500 dark:text-gray-400">{pet.breed}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5 text-gray-400" />
                       </div>
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-[#fff1f2] dark:bg-rose-900/30 flex items-center justify-center text-[#f43f5e]">
-                        <span className="text-lg font-bold">♀</span>
+                      <div className="min-w-0">
+                        <p className="font-black text-gray-900 dark:text-white text-[16px] truncate">{pet.age}</p>
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Age</p>
                       </div>
-                    )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center shrink-0">
+                        <div className="w-5 h-5 rounded-full bg-rose-200" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-gray-900 dark:text-white text-[16px] truncate">{pet.color}</p>
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Color</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-gray-800">
-                     <FileText className="w-4 h-4 text-gray-400" />
-                     <span className="text-sm font-bold text-gray-500 dark:text-gray-400">{pet.breed}</span>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center shrink-0">
-                      <Calendar className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-black text-gray-900 dark:text-white text-[16px] truncate">{pet.age}</p>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Age</p>
-                    </div>
+                  <div className="flex items-center gap-2 text-gray-400/80">
+                    <MapPin className="w-4 h-4" />
+                    <span className="text-[13px] font-bold">Added on: {new Date(pet.created_at).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center shrink-0">
-                      <div className="w-5 h-5 rounded-full" style={{ backgroundColor: pet.colorHex || '#ccc' }} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-black text-gray-900 dark:text-white text-[16px] truncate">{pet.color}</p>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Color</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-slate-800/50 flex items-center justify-center shrink-0">
-                      <Scale className="w-5 h-5 text-gray-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-black text-gray-900 dark:text-white text-[16px] truncate">{pet.weight}</p>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Weight</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 text-gray-400/80">
-                  <MapPin className="w-4 h-4" />
-                  <span className="text-[13px] font-bold">Last updated: {pet.lastUpdated}</span>
-                </div>
-
-                <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-gray-800 border-t border-gray-50 dark:border-gray-800 -mx-7 -mb-7">
-                  <Button 
-                    variant="ghost" 
-                    className="h-16 rounded-none text-gray-600 dark:text-gray-300 font-bold text-[14px] hover:bg-gray-50/50 dark:hover:bg-slate-800/50 flex items-center justify-center gap-2 transition-all"
-                    onClick={() => navigate(`/app/my-pets/${pet.id}`)}
-                  >
-                    <Eye className="w-4.5 h-4.5" />
-                    View Profile
-                  </Button>
-                  <Button variant="ghost" className="h-16 rounded-none text-gray-600 dark:text-gray-300 font-bold text-[14px] hover:bg-gray-50/50 dark:hover:bg-slate-800/50 flex items-center justify-center gap-2 transition-all">
-                    <Edit2 className="w-4.5 h-4.5" />
-                    Edit
-                  </Button>
-                  <Button variant="ghost" className="h-16 rounded-none text-rose-500 font-bold text-[14px] hover:bg-rose-50/50 dark:hover:bg-rose-950/20 flex items-center justify-center gap-2 transition-all">
-                    <Trash2 className="w-4.5 h-4.5" />
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                  <div className="grid grid-cols-4 divide-x divide-gray-100 dark:divide-gray-800 border-t border-gray-50 dark:border-gray-800 -mx-7 -mb-7">
+                    <Button 
+                      variant="ghost" 
+                      className="h-16 rounded-none text-gray-600 dark:text-gray-300 font-bold text-[11px] lg:text-[13px] hover:bg-gray-50/50 dark:hover:bg-slate-800/50 flex items-center justify-center gap-1 transition-all"
+                      onClick={() => navigate(`/app/my-pets/${pet.pet_id}`)}
+                    >
+                      <Eye className="w-4 h-4" />
+                      View
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      className="h-16 rounded-none text-orange-600 font-bold text-[11px] lg:text-[13px] hover:bg-orange-50/50 dark:hover:bg-orange-950/20 flex items-center justify-center gap-1 transition-all"
+                      onClick={() => navigate(`/app/report/lost?petId=${pet.pet_id}`)}
+                    >
+                      <AlertCircle className="w-4 h-4" />
+                      Lost
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      className="h-16 rounded-none text-gray-600 dark:text-gray-300 font-bold text-[11px] lg:text-[13px] hover:bg-gray-50/50 dark:hover:bg-slate-800/50 flex items-center justify-center gap-1 transition-all"
+                      onClick={() => navigate(`/app/my-pets/edit/${pet.pet_id}`)}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      className="h-16 rounded-none text-rose-500 font-bold text-[11px] lg:text-[13px] hover:bg-rose-50/50 dark:hover:bg-rose-950/20 flex items-center justify-center gap-1 transition-all"
+                      onClick={() => handleDelete(pet.pet_id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Del
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Bottom CTA Card */}
       <motion.div

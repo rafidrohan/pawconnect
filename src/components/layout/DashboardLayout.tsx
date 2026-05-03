@@ -112,6 +112,8 @@ export default function DashboardLayout() {
     navigate('/');
   };
 
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f1520] flex font-sans">
       {/* Sidebar */}
@@ -130,7 +132,9 @@ export default function DashboardLayout() {
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
+          {navItems
+            .filter(item => item.label !== "Analytics" || user.role?.toUpperCase() === "ADMIN")
+            .map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -221,15 +225,15 @@ export default function DashboardLayout() {
               <DropdownMenuTrigger asChild>
                 <div className="flex items-center gap-3 cursor-pointer group">
                   <Avatar className="w-10 h-10 border-2 border-transparent group-hover:border-green-500 transition-all rounded-full overflow-hidden">
-                    <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(JSON.parse(localStorage.getItem('user') || '{}').name || 'Sarah Ahmed')}&background=random`} />
-                    <AvatarFallback>{(JSON.parse(localStorage.getItem('user') || '{}').name || 'Sarah Ahmed').split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
+                    <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'Sarah Ahmed')}&background=random`} />
+                    <AvatarFallback>{(user.name || 'Sarah Ahmed').split(' ').map((n: string) => n[0]).join('')}</AvatarFallback>
                   </Avatar>
                   <div className="hidden md:block">
                     <p className="text-sm font-bold text-gray-900 dark:text-white leading-none mb-1">
-                      {JSON.parse(localStorage.getItem('user') || '{}').name || 'Sarah Ahmed'}
+                      {user.name || 'Sarah Ahmed'}
                     </p>
                     <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">
-                      {JSON.parse(localStorage.getItem('user') || '{}').role || 'Reporter'}
+                      {user.role || 'Reporter'}
                     </p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />

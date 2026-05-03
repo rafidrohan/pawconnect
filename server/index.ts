@@ -47,7 +47,7 @@ try {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json({ limit: '100mb' }));
@@ -56,6 +56,10 @@ async function startServer() {
   // API Routes
   app.get("/api/health", async (req, res) => {
     res.json({ status: "ok", message: "PawConnect Backend is running" });
+  });
+
+  app.get("/api/test-route", (req, res) => {
+    res.json({ message: "Test route works!" });
   });
 
   // Create a Case (Report Lost/Found)
@@ -78,7 +82,8 @@ async function startServer() {
 
     const { 
       type, petName, species, breed, gender, age, color, marks, 
-      location, date, time, description, reward, condition, photos 
+      location, date, time, description, reward, condition, photos,
+      petId
     } = req.body;
 
     console.log("Creating case for user:", decoded.userId, "Type:", type);
@@ -106,17 +111,20 @@ async function startServer() {
       );
       const locationId = locResult.insertId;
 
-      // 3. Create PetProfile
-      const [petResult]: any = await connection.query(
-        "INSERT INTO PetProfile (species, breed, age, gender, color, distinguishing_marks) VALUES (?, ?, ?, ?, ?, ?)",
-        [species || "Unknown", breed || "Unknown", age || null, (gender || 'UNKNOWN').toUpperCase(), color || "Unknown", marks || null]
-      );
-      const petId = petResult.insertId;
+      // 3. Get or Create PetProfile
+      let finalPetId = petId;
+      if (!finalPetId) {
+        const [petResult]: any = await connection.query(
+          "INSERT INTO PetProfile (name, species, breed, age, gender, color, distinguishing_marks, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [petName || null, species || "Unknown", breed || "Unknown", age || null, (gender || 'UNKNOWN').toUpperCase(), color || "Unknown", marks || null, decoded.userId]
+        );
+        finalPetId = petResult.insertId;
+      }
 
       // 4. Create CaseTable
       const [caseResult]: any = await connection.query(
         "INSERT INTO CaseTable (reporter_id, location_id, pet_id, case_type, description) VALUES (?, ?, ?, ?, ?)",
-        [reporterId, locationId, petId, (type || 'LOST').toUpperCase(), description || null]
+        [reporterId, locationId, finalPetId, (type || 'LOST').toUpperCase(), description || null]
       );
       const caseId = caseResult.insertId;
 
@@ -248,26 +256,35 @@ async function startServer() {
     }
   });
 
-  // Get all cases (for Dashboard)
+  // Get all cases (for Dashboard and All Cases page)
   app.get("/api/cases", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
     
-    const { species, type, city } = req.query;
+    const { species, type, city, limit, offset } = req.query;
     let query = `
-      SELECT c.*, p.species, p.breed, p.color, l.city, l.area, ph.photo_url 
+      SELECT c.*, p.species, p.breed, p.color, p.gender, p.age, l.city, l.area, ph.photo_url 
       FROM CaseTable c
       JOIN PetProfile p ON c.pet_id = p.pet_id
       JOIN Location l ON c.location_id = l.location_id
       LEFT JOIN CasePhoto ph ON c.case_id = ph.case_id AND ph.is_primary = 1
       WHERE 1=1
     `;
-    const params = [];
+    const params: any[] = [];
 
     if (species) { query += " AND p.species = ?"; params.push(species); }
     if (type) { query += " AND c.case_type = ?"; params.push(type.toString().toUpperCase()); }
     if (city) { query += " AND l.city = ?"; params.push(city); }
 
     query += " ORDER BY c.report_date DESC";
+
+    if (limit) {
+      query += " LIMIT ?";
+      params.push(parseInt(limit.toString()));
+      if (offset) {
+        query += " OFFSET ?";
+        params.push(parseInt(offset.toString()));
+      }
+    }
 
     try {
       const [rows] = await pool.query(query, params);
@@ -277,8 +294,73 @@ async function startServer() {
     }
   });
 
-  // Get user-specific cases
+  // Get user-specific cases (with pagination and filtering)
   app.get("/api/my-cases", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const { limit, offset, type, search } = req.query;
+
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
+      const userRole = users[0]?.role || decoded.role;
+      const isAdmin = userRole?.toUpperCase() === 'ADMIN';
+      
+      console.log(`[DEBUG] my-cases: type=${type}, role=${userRole}, isAdmin=${isAdmin}`);
+      
+      let query = `
+        SELECT c.*, p.species, p.breed, p.color, p.gender, p.age, l.city, l.area, ph.photo_url 
+        FROM CaseTable c
+        LEFT JOIN Reporter r ON c.reporter_id = r.reporter_id
+        LEFT JOIN PetProfile p ON c.pet_id = p.pet_id
+        LEFT JOIN Location l ON c.location_id = l.location_id
+        LEFT JOIN CasePhoto ph ON c.case_id = ph.case_id AND ph.is_primary = 1
+        WHERE 1=1
+      `;
+      
+      let queryParams: any[] = [];
+      if (!isAdmin) {
+        query += " AND r.user_id = ?";
+        queryParams.push(decoded.userId);
+      }
+
+      if (type && type !== 'ALL') {
+        query += " AND c.case_type = ?";
+        queryParams.push(type.toString().toUpperCase());
+      }
+
+      if (search) {
+        query += " AND (p.breed LIKE ? OR l.city LIKE ? OR l.area LIKE ?)";
+        const s = `%${search}%`;
+        queryParams.push(s, s, s);
+      }
+      
+      query += " ORDER BY c.report_date DESC";
+      
+      if (limit) {
+        query += " LIMIT ?";
+        queryParams.push(parseInt(limit.toString()));
+        if (offset) {
+          query += " OFFSET ?";
+          queryParams.push(parseInt(offset.toString()));
+        }
+      }
+      
+      const [rows] = await pool.query(query, queryParams);
+      console.log(`[DEBUG] my-cases query: ${query.replace(/\s+/g, ' ').trim()}`);
+      console.log(`[DEBUG] my-cases params: ${JSON.stringify(queryParams)}`);
+      res.json(rows);
+    } catch (err) {
+      console.error("My Cases Error:", err);
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Get user-specific case counts
+  app.get("/api/my-cases/stats", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
@@ -286,18 +368,39 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      const query = `
-        SELECT c.*, p.species, p.breed, p.color, p.gender, p.age, l.city, l.area, ph.photo_url 
+      const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
+      const isAdmin = (users[0]?.role || decoded.role)?.toUpperCase() === 'ADMIN';
+
+      let baseQuery = `
+        SELECT c.case_type, COUNT(*) as count 
         FROM CaseTable c
-        JOIN Reporter r ON c.reporter_id = r.reporter_id
-        JOIN PetProfile p ON c.pet_id = p.pet_id
-        JOIN Location l ON c.location_id = l.location_id
-        LEFT JOIN CasePhoto ph ON c.case_id = ph.case_id AND ph.is_primary = 1
-        WHERE r.user_id = ?
-        ORDER BY c.report_date DESC
+        LEFT JOIN Reporter r ON c.reporter_id = r.reporter_id
       `;
-      const [rows] = await pool.query(query, [decoded.userId]);
-      res.json(rows);
+      
+      let params: any[] = [];
+      if (!isAdmin) {
+        baseQuery += " WHERE r.user_id = ?";
+        params.push(decoded.userId);
+      }
+      
+      baseQuery += " GROUP BY c.case_type";
+      
+      const [rows]: any = await pool.query(baseQuery, params);
+      console.log(`[DEBUG] my-cases/stats: rows=${JSON.stringify(rows)}`);
+      
+      const stats = {
+        all: 0,
+        lost: 0,
+        found: 0
+      };
+      
+      rows.forEach((row: any) => {
+        if (row.case_type === 'LOST') stats.lost = row.count;
+        if (row.case_type === 'FOUND') stats.found = row.count;
+      });
+      stats.all = stats.lost + stats.found;
+      
+      res.json(stats);
     } catch (err) {
       res.status(401).json({ error: "Invalid token" });
     }
@@ -313,14 +416,20 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      // Verify ownership
-      const [reporter]: any = await pool.query("SELECT reporter_id FROM Reporter WHERE user_id = ?", [decoded.userId]);
-      if (reporter.length === 0) return res.status(403).json({ error: "Reporter profile not found" });
+      const isAdmin = decoded.role?.toUpperCase() === 'ADMIN';
 
-      const [updateResult]: any = await pool.query(
-        "UPDATE CaseTable SET status = ? WHERE case_id = ? AND reporter_id = ?",
-        [status, req.params.id, reporter[0].reporter_id]
-      );
+      let updateQuery = "UPDATE CaseTable SET status = ? WHERE case_id = ?";
+      let queryParams = [status, req.params.id];
+
+      if (!isAdmin) {
+        // Verify ownership for non-admins
+        const [reporter]: any = await pool.query("SELECT reporter_id FROM Reporter WHERE user_id = ?", [decoded.userId]);
+        if (reporter.length === 0) return res.status(403).json({ error: "Reporter profile not found" });
+        updateQuery = "UPDATE CaseTable SET status = ? WHERE case_id = ? AND reporter_id = ?";
+        queryParams = [status, req.params.id, reporter[0].reporter_id];
+      }
+
+      const [updateResult]: any = await pool.query(updateQuery, queryParams);
 
       if (updateResult.affectedRows === 0) return res.status(404).json({ error: "Case not found or unauthorized" });
       res.json({ message: "Status updated successfully" });
@@ -338,19 +447,34 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      const query = `
-        SELECT c.*, p.*, l.city, l.area, ph.photo_url, lr.reward, fr.found_condition 
+      
+      // Get role from DB for security
+      const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
+      const isAdmin = (users[0]?.role || decoded.role)?.toUpperCase() === 'ADMIN';
+
+      let query = `
+        SELECT 
+          c.case_id, c.case_type, c.status, c.report_date, c.description,
+          p.name as pet_name, p.species, p.breed, p.age, p.gender, p.color, p.distinguishing_marks,
+          l.city, l.area, 
+          lr.reward, 
+          fr.found_condition,
+          u.name as reporter_name, 
+          u.email as reporter_email, 
+          u.phone as reporter_phone
         FROM CaseTable c
         JOIN PetProfile p ON c.pet_id = p.pet_id
         JOIN Location l ON c.location_id = l.location_id
-        LEFT JOIN CasePhoto ph ON c.case_id = ph.case_id AND ph.is_primary = 1
+        JOIN Reporter r ON c.reporter_id = r.reporter_id
+        JOIN User u ON r.user_id = u.user_id
         LEFT JOIN LostReport lr ON c.case_id = lr.case_id
         LEFT JOIN FoundReport fr ON c.case_id = fr.case_id
-        JOIN Reporter r ON c.reporter_id = r.reporter_id
-        WHERE c.case_id = ? AND r.user_id = ?
+        WHERE c.case_id = ?
       `;
-      const [rows]: any = await pool.query(query, [req.params.id, decoded.userId]);
-      if (rows.length === 0) return res.status(404).json({ error: "Case not found or unauthorized" });
+      
+      let queryParams = [req.params.id];
+      const [rows]: any = await pool.query(query, queryParams);
+      if (rows.length === 0) return res.status(404).json({ error: "Case not found" });
       
       // Get all photos
       const [photos]: any = await pool.query("SELECT photo_url FROM CasePhoto WHERE case_id = ?", [req.params.id]);
@@ -368,23 +492,36 @@ async function startServer() {
     const token = authHeader.split(" ")[1];
     const { 
       petName, species, breed, gender, age, color, marks, 
-      location, date, time, description, reward, condition, photos 
+      location, date, time, description, reward, condition, photos,
+      petId
     } = req.body;
 
     let connection;
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      // Get role from DB for security
+      const [users]: any = await pool.query("SELECT role FROM User WHERE user_id = ?", [decoded.userId]);
+      const isAdmin = (users[0]?.role || decoded.role)?.toUpperCase() === 'ADMIN';
+
       connection = await pool.getConnection();
       await connection.beginTransaction();
 
-      // 1. Verify ownership
-      const [reporters]: any = await connection.query("SELECT reporter_id FROM Reporter WHERE user_id = ?", [decoded.userId]);
-      if (reporters.length === 0) throw new Error("Reporter profile not found");
+      // Verify existence and ownership (if not admin)
+      let verificationQuery = `
+        SELECT c.pet_id, c.location_id 
+        FROM CaseTable c 
+        JOIN Reporter r ON c.reporter_id = r.reporter_id 
+        WHERE c.case_id = ?
+      `;
+      let verificationParams = [req.params.id];
+      
+      if (!isAdmin) {
+        verificationQuery += " AND r.user_id = ?";
+        verificationParams.push(decoded.userId);
+      }
 
-      const [caseRows]: any = await connection.query(
-        "SELECT pet_id, location_id FROM CaseTable WHERE case_id = ? AND reporter_id = ?", 
-        [req.params.id, reporters[0].reporter_id]
-      );
+      const [caseRows]: any = await connection.query(verificationQuery, verificationParams);
       if (caseRows.length === 0) throw new Error("Case not found or unauthorized");
 
       const { pet_id, location_id } = caseRows[0];
@@ -494,18 +631,24 @@ async function startServer() {
 
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      // Verify ownership
-      const [reporter]: any = await pool.query("SELECT reporter_id FROM Reporter WHERE user_id = ?", [decoded.userId]);
-      if (reporter.length === 0) return res.status(403).json({ error: "Reporter profile not found" });
+      const isAdmin = decoded.role?.toUpperCase() === 'ADMIN';
 
       // First delete related records
       await pool.query("DELETE FROM CasePhoto WHERE case_id = ?", [req.params.id]);
       await pool.query("DELETE FROM Matches WHERE lost_report_id = ? OR found_report_id = ?", [req.params.id, req.params.id]);
       
-      const [deleteResult]: any = await pool.query(
-        "DELETE FROM CaseTable WHERE case_id = ? AND reporter_id = ?",
-        [req.params.id, reporter[0].reporter_id]
-      );
+      let deleteQuery = "DELETE FROM CaseTable WHERE case_id = ?";
+      let queryParams = [req.params.id];
+
+      if (!isAdmin) {
+        // Verify ownership for non-admins
+        const [reporter]: any = await pool.query("SELECT reporter_id FROM Reporter WHERE user_id = ?", [decoded.userId]);
+        if (reporter.length === 0) return res.status(403).json({ error: "Reporter profile not found" });
+        deleteQuery = "DELETE FROM CaseTable WHERE case_id = ? AND reporter_id = ?";
+        queryParams = [req.params.id, reporter[0].reporter_id];
+      }
+
+      const [deleteResult]: any = await pool.query(deleteQuery, queryParams);
 
       if (deleteResult.affectedRows === 0) return res.status(404).json({ error: "Case not found or unauthorized" });
       res.json({ message: "Case deleted successfully" });
@@ -603,6 +746,267 @@ async function startServer() {
     }
   });
 
+  // Get current user profile
+  app.get("/api/user/profile", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const [users]: any = await pool.query("SELECT user_id, name, email, phone, role, created_at FROM User WHERE user_id = ?", [decoded.userId]);
+      if (users.length === 0) return res.status(404).json({ error: "User not found" });
+      res.json(users[0]);
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Update user profile
+  app.put("/api/user/profile", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const { name, email, phone } = req.body;
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      await pool.query(
+        "UPDATE User SET name = ?, email = ?, phone = ? WHERE user_id = ?", 
+        [name, email, phone, decoded.userId]
+      );
+      res.json({ success: true, message: "Profile updated successfully" });
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Update user password
+  app.put("/api/user/password", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const { currentPassword, newPassword } = req.body;
+
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      // 1. Get current user's password hash
+      const [users]: any = await pool.query("SELECT password_hash FROM User WHERE user_id = ?", [decoded.userId]);
+      if (users.length === 0) return res.status(404).json({ error: "User not found" });
+
+      const user = users[0];
+
+      // 2. Verify current password
+      const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+      if (!isMatch) {
+        return res.status(400).json({ error: "Incorrect current password" });
+      }
+
+      // 3. Hash new password
+      const salt = await bcrypt.genSalt(10);
+      const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+      // 4. Update database
+      await pool.query("UPDATE User SET password_hash = ? WHERE user_id = ?", [newPasswordHash, decoded.userId]);
+
+      res.json({ success: true, message: "Password updated successfully" });
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Get current user's pets
+  app.get("/api/my-pets", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const [pets]: any = await pool.query(`
+        SELECT p.*, ph.photo_url 
+        FROM PetProfile p 
+        LEFT JOIN PetPhoto ph ON p.pet_id = ph.pet_id AND ph.is_primary = 1 
+        WHERE p.owner_id = ?
+      `, [decoded.userId]);
+      res.json(pets);
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Get a single pet detail
+  app.get("/api/my-pets/:id", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const [pets]: any = await pool.query(`
+        SELECT p.*, ph.photo_url 
+        FROM PetProfile p 
+        LEFT JOIN PetPhoto ph ON p.pet_id = ph.pet_id AND ph.is_primary = 1 
+        WHERE p.pet_id = ? AND p.owner_id = ?
+      `, [req.params.id, decoded.userId]);
+      
+      if (pets.length === 0) return res.status(404).json({ error: "Pet not found" });
+      res.json(pets[0]);
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Delete a pet
+  app.delete("/api/my-pets/:id", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      // Delete will cascade to PetPhoto if foreign key is set correctly
+      const [result]: any = await pool.query("DELETE FROM PetProfile WHERE pet_id = ? AND owner_id = ?", [req.params.id, decoded.userId]);
+      if (result.affectedRows === 0) return res.status(404).json({ error: "Pet not found or unauthorized" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Get cases for a specific pet
+  app.get("/api/my-pets/:id/cases", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const [cases]: any = await pool.query(`
+        SELECT c.*, l.city, l.area 
+        FROM CaseTable c 
+        JOIN Location l ON c.location_id = l.location_id 
+        JOIN PetProfile p ON c.pet_id = p.pet_id 
+        WHERE c.pet_id = ? AND p.owner_id = ?
+      `, [req.params.id, decoded.userId]);
+      res.json(cases);
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+  // Update a pet
+  app.put("/api/my-pets/:id", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const { name, species, breed, age, gender, color, distinguishing_marks, image } = req.body;
+    
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      // Update basic info
+      const [result]: any = await pool.query(
+        "UPDATE PetProfile SET name = ?, species = ?, breed = ?, age = ?, gender = ?, color = ?, distinguishing_marks = ? WHERE pet_id = ? AND owner_id = ?",
+        [name, species, breed, age, gender?.toUpperCase(), color, distinguishing_marks, req.params.id, decoded.userId]
+      );
+      
+      if (result.affectedRows === 0) return res.status(404).json({ error: "Pet not found or unauthorized" });
+
+      // Update image if provided
+      if (image) {
+        // Mark existing primary photos as not primary
+        await pool.query("UPDATE PetPhoto SET is_primary = 0 WHERE pet_id = ?", [req.params.id]);
+        // Insert new primary photo
+        await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, 1)", [req.params.id, image]);
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to update pet:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Add a new pet
+  app.post("/api/my-pets", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const { name, species, breed, age, gender, color, distinguishing_marks, image } = req.body;
+    
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const [result]: any = await pool.query(
+        "INSERT INTO PetProfile (name, species, breed, age, gender, color, distinguishing_marks, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [name, species, breed, age, gender.toUpperCase(), color, distinguishing_marks, decoded.userId]
+      );
+      
+      const petId = result.insertId;
+
+      if (image) {
+        await pool.query("INSERT INTO PetPhoto (pet_id, photo_url, is_primary) VALUES (?, ?, 1)", [petId, image]);
+      }
+
+      res.status(201).json({ success: true, petId });
+    } catch (err) {
+      console.error("Failed to add pet:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get user-specific stats
+  app.get("/api/user/stats", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const [totalReports]: any = await pool.query(`
+        SELECT COUNT(*) as count FROM CaseTable c
+        JOIN Reporter r ON c.reporter_id = r.reporter_id
+        WHERE r.user_id = ?
+      `, [decoded.userId]);
+
+      const [recovered]: any = await pool.query(`
+        SELECT COUNT(*) as count FROM CaseTable c
+        JOIN Reporter r ON c.reporter_id = r.reporter_id
+        WHERE r.user_id = ? AND c.status = 'RECOVERED'
+      `, [decoded.userId]);
+
+      const [matchesCount]: any = await pool.query(`
+        SELECT COUNT(DISTINCT m.match_id) as count
+        FROM Matches m
+        LEFT JOIN LostReport lr ON m.lost_report_id = lr.lost_report_id
+        LEFT JOIN FoundReport fr ON m.found_report_id = fr.found_report_id
+        LEFT JOIN CaseTable lc ON lr.case_id = lc.case_id
+        LEFT JOIN CaseTable fc ON fr.case_id = fc.case_id
+        LEFT JOIN Reporter lr_p ON lc.reporter_id = lr_p.reporter_id
+        LEFT JOIN Reporter fr_p ON fc.reporter_id = fr_p.reporter_id
+        WHERE lr_p.user_id = ? OR fr_p.user_id = ?
+      `, [decoded.userId, decoded.userId]);
+
+      const [user]: any = await pool.query("SELECT created_at FROM User WHERE user_id = ?", [decoded.userId]);
+
+      res.json({
+        totalReports: totalReports[0].count,
+        recovered: recovered[0].count,
+        matchesFound: matchesCount[0].count,
+        memberSince: user[0]?.created_at || new Date()
+      });
+    } catch (err) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
+
   app.get("/api/pets", async (req, res) => {
     if (!pool) {
       return res.status(500).json({ error: "Database not connected" });
@@ -696,6 +1100,77 @@ async function startServer() {
     } catch (err: any) {
       console.error("Fetch Matches Error:", err);
       res.status(500).json({ error: "Failed to fetch matches", details: err.message });
+    }
+  });
+
+  // Get matches for a specific case
+  app.get("/api/cases/:id/matches", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const caseId = req.params.id;
+      
+      const query = `
+        SELECT 
+          m.match_id, m.match_score, m.match_status, m.created_at as matched_at,
+          -- Other Side Case Info
+          CASE WHEN lr.case_id = ? THEN f_case.case_id ELSE l_case.case_id END as other_case_id,
+          CASE WHEN lr.case_id = ? THEN f_pet.species ELSE l_pet.species END as other_species,
+          CASE WHEN lr.case_id = ? THEN f_pet.breed ELSE l_pet.breed END as other_breed,
+          CASE WHEN lr.case_id = ? THEN (SELECT photo_url FROM CasePhoto WHERE case_id = f_case.case_id LIMIT 1) 
+               ELSE (SELECT photo_url FROM CasePhoto WHERE case_id = l_case.case_id LIMIT 1) END as other_img,
+          CASE WHEN lr.case_id = ? THEN 'FOUND' ELSE 'LOST' END as other_type
+        FROM Matches m
+        JOIN LostReport lr ON m.lost_report_id = lr.lost_report_id
+        JOIN FoundReport fr ON m.found_report_id = fr.found_report_id
+        JOIN CaseTable l_case ON lr.case_id = l_case.case_id
+        JOIN CaseTable f_case ON fr.case_id = f_case.case_id
+        JOIN PetProfile l_pet ON l_case.pet_id = l_pet.pet_id
+        JOIN PetProfile f_pet ON f_case.pet_id = f_pet.pet_id
+        WHERE (l_case.case_id = ? OR f_case.case_id = ?)
+        ORDER BY m.match_score DESC
+      `;
+      const [rows]: any = await pool.query(query, [caseId, caseId, caseId, caseId, caseId, caseId, caseId]);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch case matches" });
+    }
+  });
+
+  // Get Top Global Matches (for Dashboard)
+  app.get("/api/top-matches", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    try {
+      const query = `
+        SELECT 
+          m.match_id, m.match_score, m.match_status, m.created_at as matched_at,
+          -- Lost Side
+          l_pet.breed as lost_breed, l_loc.area as lost_area,
+          (SELECT photo_url FROM CasePhoto WHERE case_id = l_case.case_id LIMIT 1) as lost_img,
+          -- Found Side
+          f_pet.breed as found_breed, f_loc.area as found_area,
+          (SELECT photo_url FROM CasePhoto WHERE case_id = f_case.case_id LIMIT 1) as found_img
+        FROM Matches m
+        JOIN LostReport lr ON m.lost_report_id = lr.lost_report_id
+        JOIN CaseTable l_case ON lr.case_id = l_case.case_id
+        JOIN PetProfile l_pet ON l_case.pet_id = l_pet.pet_id
+        JOIN Location l_loc ON l_case.location_id = l_loc.location_id
+        JOIN FoundReport fr ON m.found_report_id = fr.found_report_id
+        JOIN CaseTable f_case ON fr.case_id = f_case.case_id
+        JOIN PetProfile f_pet ON f_case.pet_id = f_pet.pet_id
+        JOIN Location f_loc ON f_case.location_id = f_loc.location_id
+        WHERE m.match_status != 'REJECTED'
+        ORDER BY m.match_score DESC
+        LIMIT 3
+      `;
+      const [rows] = await pool.query(query);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch top matches" });
     }
   });
 
@@ -842,7 +1317,7 @@ async function startServer() {
     }
   });
 
-  // Get overall stats
+  // Get overall stats (for Dashboard)
   app.get("/api/stats", async (req, res) => {
     if (!pool) return res.status(500).json({ error: "Database not connected" });
     try {
@@ -852,18 +1327,135 @@ async function startServer() {
       const [active]: any = await pool.query("SELECT COUNT(*) as count FROM CaseTable WHERE status = 'REPORTED' OR status = 'UNDER_REVIEW'");
       const [matches]: any = await pool.query("SELECT COUNT(*) as count FROM Matches WHERE match_status = 'CONFIRMED'");
       const [totalLost]: any = await pool.query("SELECT COUNT(*) as count FROM CaseTable WHERE case_type = 'LOST'");
+      
+      // Distribution data
+      const [speciesDist]: any = await pool.query("SELECT species as name, COUNT(*) as value FROM PetProfile GROUP BY species");
+      const [locationDist]: any = await pool.query(`
+        SELECT l.city as name, COUNT(*) as count 
+        FROM CaseTable c 
+        JOIN Location l ON c.location_id = l.location_id 
+        GROUP BY l.city 
+        ORDER BY count DESC 
+        LIMIT 4
+      `);
+
       const totalRecovered = Math.max(recoveredStat[0]?.stat_value || 0, recoveredDb[0].count);
       const baseCount = Math.max(totalRecovered, totalLost[0].count);
+      const totalCount = totalCases[0].count;
 
       res.json({
-        total: totalCases[0].count,
+        total: totalCount,
         recovered: totalRecovered,
         active: active[0].count,
         matches: matches[0].count,
-        recoveryRate: baseCount > 0 ? Math.round((totalRecovered / baseCount) * 100) : 0
+        recoveryRate: baseCount > 0 ? Math.round((totalRecovered / baseCount) * 100) : 0,
+        speciesDistribution: speciesDist.map((s: any) => ({
+          ...s,
+          value: totalCount > 0 ? Math.round((s.value / totalCount) * 100) : 0
+        })),
+        locationDistribution: locationDist.map((l: any) => ({
+          ...l,
+          percentage: totalCount > 0 ? Math.round((l.count / totalCount) * 100) : 0
+        }))
       });
     } catch (err: any) {
+      console.error("Stats Error:", err);
       res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+
+  // Detailed Admin Analytics
+  app.get("/api/admin/analytics", async (req, res) => {
+    if (!pool) return res.status(500).json({ error: "Database not connected" });
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    
+    try {
+      const decoded: any = jwt.verify(authHeader.split(" ")[1], JWT_SECRET);
+      if (decoded.role?.toUpperCase() !== 'ADMIN') {
+        return res.status(403).json({ error: "Access denied. Admins only." });
+      }
+
+      // 1. Overview Stats
+      const [stats]: any = await pool.query(`
+        SELECT 
+          (SELECT COUNT(*) FROM CaseTable) as totalCases,
+          (SELECT COUNT(*) FROM CaseTable WHERE status IN ('REPORTED', 'UNDER_REVIEW')) as activeCases,
+          (SELECT COUNT(*) FROM CaseTable WHERE status = 'RECOVERED') as recoveredCases,
+          (SELECT COUNT(*) FROM Matches WHERE match_status = 'CONFIRMED') as confirmedMatches
+      `);
+
+      // 2. Monthly Trends (Last 6 Months)
+      const [trends]: any = await pool.query(`
+        SELECT 
+          DATE_FORMAT(report_date, '%b') as name,
+          SUM(CASE WHEN case_type = 'LOST' THEN 1 ELSE 0 END) as lost,
+          SUM(CASE WHEN case_type = 'FOUND' THEN 1 ELSE 0 END) as found,
+          SUM(CASE WHEN status = 'RECOVERED' THEN 1 ELSE 0 END) as recovered
+        FROM CaseTable
+        WHERE report_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(report_date, '%Y-%m'), name
+        ORDER BY MIN(report_date)
+      `);
+
+      // 3. Species Distribution
+      const [species]: any = await pool.query(`
+        SELECT species as name, COUNT(*) as value
+        FROM PetProfile
+        GROUP BY species
+      `);
+
+      // 4. Top 5 Breeds
+      const [breeds]: any = await pool.query(`
+        SELECT breed as name, COUNT(*) as value
+        FROM PetProfile
+        WHERE breed IS NOT NULL AND breed != ''
+        GROUP BY breed
+        ORDER BY value DESC
+        LIMIT 5
+      `);
+
+      // 5. Cases by Location (City)
+      const [locations]: any = await pool.query(`
+        SELECT l.city as loc, COUNT(*) as val
+        FROM CaseTable c
+        JOIN Location l ON c.location_id = l.location_id
+        GROUP BY l.city
+        ORDER BY val DESC
+        LIMIT 6
+      `);
+
+      // 6. Average Recovery Time (Days)
+      const [recoveryTime]: any = await pool.query(`
+        SELECT AVG(DATEDIFF(updated_at, report_date)) as avgDays
+        FROM CaseTable
+        WHERE status = 'RECOVERED'
+      `);
+
+      res.json({
+        overview: stats[0],
+        trends,
+        species: species.map((s: any) => {
+          const name = String(s.name).toLowerCase();
+          let color = '#f59e0b'; // Default Orange
+          if (name === 'dog') color = '#f97316'; // Vivid Orange
+          if (name === 'cat') color = '#3b82f6'; // Blue
+          if (name === 'bird') color = '#a855f7'; // Purple
+          return { ...s, color };
+        }),
+        breeds: breeds.map((b: any, i: number) => ({ 
+          ...b, 
+          color: ['#22c55e', '#3b82f6', '#eab308', '#a855f7', '#64748b'][i] 
+        })),
+        locations,
+        avgRecoveryTime: Math.round((recoveryTime[0].avgDays || 0) * 10) / 10
+      });
+
+    } catch (err: any) {
+      console.error("Analytics Error:", err);
+      res.status(500).json({ error: "Failed to fetch analytics", details: err.message });
     }
   });
 

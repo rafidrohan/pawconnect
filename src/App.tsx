@@ -13,6 +13,7 @@ import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import CaseDetails from "./pages/CaseDetails";
+import EditPet from "./pages/EditPet";
 
 import { AuthGuard } from "@/components/features/auth/AuthGuard";
 
@@ -31,13 +32,21 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="my-pets" element={<MyPets />} />
           <Route path="my-pets/add" element={<AddPet />} />
+          <Route path="my-pets/edit/:id" element={<EditPet />} />
           <Route path="my-pets/:id" element={<PetProfile />} />
           <Route path="report/:type" element={<ReportPet />} />
           <Route path="matches" element={<ViewMatches />} />
           <Route path="cases" element={<MyCases />} />
           <Route path="cases/:id" element={<CaseDetails />} />
           <Route path="notifications" element={<Notifications />} />
-          <Route path="analytics" element={<Analytics />} />
+          <Route 
+            path="analytics" 
+            element={
+              JSON.parse(localStorage.getItem("user") || "{}").role?.toUpperCase() === "ADMIN" 
+                ? <Analytics /> 
+                : <Navigate to="/app/dashboard" replace />
+            } 
+          />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings />} />
         </Route>

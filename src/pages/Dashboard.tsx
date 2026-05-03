@@ -48,39 +48,60 @@ const recoveryData = [
   { name: 'May', value: 72 },
 ];
 
-const speciesData = [
-  { name: 'Dogs', value: 65, color: '#82ca9d' },
-  { name: 'Cats', value: 25, color: '#94a3b8' },
-  { name: 'Others', value: 10, color: '#ff8082' },
-];
-
-const locationData = [
-  { name: 'Dhanmondi', count: 28, percentage: 80 },
-  { name: 'Gulshan', count: 22, percentage: 65 },
-  { name: 'Mirpur', count: 18, percentage: 50 },
-  { name: 'Uttara', count: 15, percentage: 40 },
-  { name: 'Others', count: 45, percentage: 25 },
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const [cases, setCases] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>({ total: 0, recovered: 0, active: 0, matches: 0, recoveryRate: 0 });
+  const [stats, setStats] = useState<any>({ 
+    total: 0, 
+    recovered: 0, 
+    active: 0, 
+    matches: 0, 
+    recoveryRate: 0, 
+    speciesDistribution: [], 
+    locationDistribution: [] 
+  });
+  const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [casesRes, statsRes] = await Promise.all([
+        const token = localStorage.getItem("token");
+        const [casesRes, statsRes, matchesRes] = await Promise.all([
           fetch(getApiUrl("/api/cases?limit=4")),
-          fetch(getApiUrl("/api/stats"))
+          fetch(getApiUrl("/api/stats")),
+          fetch(getApiUrl("/api/top-matches"), {
+            headers: { "Authorization": `Bearer ${token}` }
+          })
         ]);
         
         const casesData = await casesRes.json();
         const statsData = await statsRes.json();
+        const matchesData = await matchesRes.json();
         
-        setCases(casesData);
-        setStats(statsData);
+        if (Array.isArray(casesData)) {
+          setCases(casesData.slice(0, 4));
+        } else {
+          setCases([]);
+        }
+
+        if (statsData && !statsData.error) {
+          setStats({
+            total: statsData.total || 0,
+            recovered: statsData.recovered || 0,
+            active: statsData.active || 0,
+            matches: statsData.matches || 0,
+            recoveryRate: statsData.recoveryRate || 0,
+            speciesDistribution: Array.isArray(statsData.speciesDistribution) ? statsData.speciesDistribution : [],
+            locationDistribution: Array.isArray(statsData.locationDistribution) ? statsData.locationDistribution : []
+          });
+        }
+
+        if (Array.isArray(matchesData)) {
+          setMatches(matchesData);
+        } else {
+          setMatches([]);
+        }
       } catch (err) {
         console.error("Failed to fetch dashboard data", err);
       } finally {
@@ -90,6 +111,13 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+
+  const speciesColors: any = {
+    'DOG': '#82ca9d',
+    'CAT': '#94a3b8',
+    'BIRD': '#6366f1',
+    'OTHER': '#ff8082'
+  };
 
   return (
     <div className="space-y-6">
@@ -291,47 +319,56 @@ export default function Dashboard() {
             </Button>
           </div>
           <div className="flex-1 flex flex-col">
-             {[
-               { match: 94, p1: 'Golden Retriever (Lost)', p2: 'Similar Found', loc: 'Banani, Dhaka', img1: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=150', img2: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=150' },
-               { match: 87, p1: 'Tabby Cat (Lost)', p2: 'Similar Found', loc: 'Gulshan, Dhaka', img1: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=150', img2: 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=150' },
-               { match: 76, p1: 'Shih Tzu (Lost)', p2: 'Similar Found', loc: 'Mirpur, Dhaka', img1: 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=150', img2: 'https://images.unsplash.com/photo-1597626133663-cb34ae923184?auto=format&fit=crop&w=150' }
-             ].map((item, i) => (
+             {loading ? (
+               <div className="flex-1 flex items-center justify-center py-10">
+                 <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+               </div>
+             ) : matches.length === 0 ? (
+               <div className="flex-1 flex flex-col items-center justify-center py-10 text-center px-6">
+                 <Heart className="w-12 h-12 text-gray-200 mb-4" />
+                 <p className="text-gray-500 font-medium text-sm">No matches found yet.</p>
+               </div>
+             ) : (
+               matches.map((item, i) => (
                 <div key={i} className="relative">
                   {i !== 0 && <div className="mx-6 border-t border-gray-200 dark:border-gray-700" />}
                   <div className="p-6 flex items-center justify-between hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors flex-1 min-h-[114px]">
                   <div className="flex items-center gap-6 flex-1 min-w-0">
                      <Avatar className="w-20 h-20 rounded-xl overflow-hidden shadow-sm flex-shrink-0 border border-gray-100 dark:border-gray-800">
-                       <AvatarImage src={item.img1} className="object-cover"/>
-                       <AvatarFallback>P1</AvatarFallback>
+                       <AvatarImage src={item.lost_img || "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=150"} className="object-cover"/>
+                       <AvatarFallback>L</AvatarFallback>
                      </Avatar>
                      <div className="relative w-14 h-14 flex-shrink-0">
                         <svg className="w-full h-full transform -rotate-90">
                           <circle cx="28" cy="28" r="25" stroke="currentColor" strokeWidth="2.5" fill="transparent" className="text-gray-100 dark:text-gray-800" />
-                          <circle cx="28" cy="28" r="25" stroke="currentColor" strokeWidth="3" fill="transparent" strokeDasharray={157.1} strokeDashoffset={157.1 - (157.1 * item.match) / 100} className="text-green-400" />
+                          <circle cx="28" cy="28" r="25" stroke="currentColor" strokeWidth="3" fill="transparent" strokeDasharray={157.1} strokeDashoffset={157.1 - (157.1 * item.match_score)} className="text-green-400" />
                         </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-[#2d7a44] dark:text-green-400">{item.match}%</span>
+                        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-[#2d7a44] dark:text-green-400">{Math.round(item.match_score * 100)}%</span>
                      </div>
                      <Avatar className="w-20 h-20 rounded-xl overflow-hidden shadow-sm flex-shrink-0 border border-gray-100 dark:border-gray-800">
-                       <AvatarImage src={item.img2} className="object-cover"/>
-                       <AvatarFallback>P2</AvatarFallback>
+                       <AvatarImage src={item.found_img || "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=150"} className="object-cover"/>
+                       <AvatarFallback>F</AvatarFallback>
                      </Avatar>
                      <div className="min-w-0 ml-4 flex-1">
-                        <h4 className="font-bold text-[15px] text-gray-900 dark:text-white truncate">{item.p1}</h4>
-                        <p className="text-[13px] text-gray-500 font-semibold mb-1">& {item.p2}</p>
+                        <h4 className="font-bold text-[15px] text-gray-900 dark:text-white truncate">{item.lost_breed} (Lost)</h4>
+                        <p className="text-[13px] text-gray-500 font-semibold mb-1">& {item.found_breed} (Found)</p>
                         <div className="flex items-center gap-1.5 text-[11px] text-gray-400 font-semibold whitespace-nowrap">
                            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                           {item.loc}
+                           {item.lost_area}
                         </div>
                      </div>
                   </div>
                   <div className="flex-shrink-0 ml-6">
-                     <Button className="h-10 px-6 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-500 dark:text-red-400 font-bold text-[13px] hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all duration-200 border-0">
+                     <Button 
+                        onClick={() => navigate('/app/matches')}
+                        className="h-10 px-6 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-500 dark:text-red-400 font-bold text-[13px] hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all duration-200 border-0"
+                     >
                        View Match
                      </Button>
                   </div>
                 </div>
               </div>
-            ))}
+            )))}
           </div>
         </Card>
       </div>
@@ -370,20 +407,26 @@ export default function Dashboard() {
                 <div className="w-[100px] h-[100px] min-h-[100px] relative">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <PieChart>
-                      <Pie data={speciesData} innerRadius={30} outerRadius={45} paddingAngle={5} dataKey="value">
-                        {speciesData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Pie 
+                        data={stats.speciesDistribution || []} 
+                        innerRadius={30} 
+                        outerRadius={45} 
+                        paddingAngle={5} 
+                        dataKey="value"
+                      >
+                        {(stats.speciesDistribution || []).map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={speciesColors[entry.name?.toUpperCase()] || '#94a3b8'} />
                         ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex-1 space-y-3">
-                   {speciesData.map((item, i) => (
+                <div className="flex-1 space-y-3 overflow-y-auto max-h-[120px] pr-2">
+                   {(stats.speciesDistribution || []).map((item: any, i: number) => (
                      <div key={i} className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
-                           <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: item.color }} />
-                           <span className="text-[13px] font-semibold text-gray-600 dark:text-gray-300">{item.name}</span>
+                           <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: speciesColors[item.name?.toUpperCase()] || '#94a3b8' }} />
+                           <span className="text-[13px] font-semibold text-gray-600 dark:text-gray-300 capitalize">{item.name?.toLowerCase()}</span>
                         </div>
                         <span className="text-[13px] font-bold text-gray-900 dark:text-white">{item.value}%</span>
                      </div>
@@ -395,8 +438,8 @@ export default function Dashboard() {
           {/* Cases by Location Card */}
           <Card className="border border-gray-100 dark:border-gray-800 shadow-sm bg-white dark:bg-[#1A2234] rounded-2xl p-6 h-[210px] flex flex-col">
               <h3 className="font-bold text-[18px] text-gray-900 dark:text-white mb-3">Cases by Location</h3>
-              <div className="space-y-3.5 flex-1 flex flex-col justify-center">
-                {locationData.slice(0, 4).map((loc, i) => (
+              <div className="space-y-3.5 flex-1 flex flex-col justify-center overflow-y-auto max-h-[130px] pr-2">
+                {(stats.locationDistribution || []).map((loc: any, i: number) => (
                   <div key={i} className="flex items-center gap-4">
                     <span className="text-[13px] font-semibold text-gray-600 dark:text-gray-300 min-w-[80px] truncate">{loc.name}</span>
                     <div className="flex-1 h-2 bg-gray-50 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
@@ -416,7 +459,10 @@ export default function Dashboard() {
                   If you found a pet or lost your pet, we're here to help!
                 </p>
                 <div className="pt-2">
-                  <Button className="h-10 px-5 rounded-xl bg-[#e6f4ea] dark:bg-green-900/30 text-[#38a169] dark:text-green-400 font-bold text-[13px] hover:bg-[#38a169] hover:text-white transition-all border-0 shadow-md flex items-center gap-2">
+                  <Button 
+                    onClick={() => window.location.href = 'mailto:support@pawconnect.pages.dev'}
+                    className="h-10 px-5 rounded-xl bg-[#e6f4ea] dark:bg-green-900/30 text-[#38a169] dark:text-green-400 font-bold text-[13px] hover:bg-[#38a169] hover:text-white transition-all border-0 shadow-md flex items-center gap-2"
+                  >
                     <HeadphonesIcon className="w-4 h-4" />
                     Contact Support
                   </Button>

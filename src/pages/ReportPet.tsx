@@ -28,6 +28,7 @@ import { getApiUrl } from "@/lib/api";
 export default function ReportPet() {
   const { type } = useParams<{ type: "lost" | "found" }>();
   const [searchParams] = useSearchParams();
+  const petId = searchParams.get("petId");
   const editId = searchParams.get("edit");
   const navigate = useNavigate();
   const isLost = type === "lost";
@@ -52,12 +53,12 @@ export default function ReportPet() {
     species: "",
     breed: "",
     gender: "unknown",
-    age: "adult",
+    age: "Adult",
     color: "",
     marks: "",
     location: "",
     date: new Date().toISOString().split('T')[0],
-    time: "12:00",
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
     description: "",
     reward: 0,
     condition: "Good"
@@ -65,19 +66,26 @@ export default function ReportPet() {
 
   const [photos, setPhotos] = useState<string[]>([]);
 
-  // Load data if editing
+  // Load data if editing OR pre-filling from registered pet
   React.useEffect(() => {
-    if (editId) {
-      const fetchCaseData = async () => {
-        setIsFetching(true);
-        try {
-          const token = localStorage.getItem("token");
-          const res = await fetch(getApiUrl(`/api/cases/${editId}`), {
-            headers: { "Authorization": `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (res.ok) {
-            console.log("Loaded case data for edit:", data);
+    const fetchData = async () => {
+      if (!editId && !petId) return;
+      
+      setIsFetching(true);
+      try {
+        const token = localStorage.getItem("token");
+        const url = editId 
+          ? getApiUrl(`/api/cases/${editId}`) 
+          : getApiUrl(`/api/my-pets/${petId}`);
+          
+        const res = await fetch(url, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          if (editId) {
+            // Loading case for edit
             const reportDate = new Date(data.report_date);
             const loadedGender = String(data.gender || "unknown").toLowerCase();
             const validGenders = ["male", "female", "unknown"];
@@ -87,7 +95,7 @@ export default function ReportPet() {
               species: data.species || "",
               breed: data.breed || "",
               gender: validGenders.includes(loadedGender) ? loadedGender : "unknown",
-              age: String(data.age || "adult").toLowerCase(),
+              age: data.age || "Adult",
               color: data.color || "",
               marks: data.distinguishing_marks || "",
               location: data.city || "",
@@ -99,18 +107,34 @@ export default function ReportPet() {
             });
             setPhotos(data.photos || []);
           } else {
-            setError(data.error || "Failed to load case data");
+            // Pre-filling from registered pet
+            setFormData(prev => ({
+              ...prev,
+              petName: data.name || "",
+              species: (data.species || "").toLowerCase(),
+              breed: data.breed || "",
+              gender: (data.gender || "unknown").toLowerCase(),
+              age: data.age || "Adult",
+              color: data.color || "",
+              marks: data.distinguishing_marks || ""
+            }));
+            if (data.photo_url) {
+              setPhotos([data.photo_url]);
+            }
           }
-        } catch (err) {
-          console.error("Error fetching case for edit:", err);
-          setError("Failed to connect to server");
-        } finally {
-          setIsFetching(false);
+        } else {
+          setError(data.error || "Failed to load data");
         }
-      };
-      fetchCaseData();
-    }
-  }, [editId]);
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setError("Failed to connect to server");
+      } finally {
+        setIsFetching(false);
+      }
+    };
+    
+    fetchData();
+  }, [editId, petId]);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -152,7 +176,8 @@ export default function ReportPet() {
         body: JSON.stringify({
           ...formData,
           type: type, // 'lost' or 'found'
-          photos: photos // Array of base64 strings
+          photos: photos, // Array of base64 strings
+          petId: petId // Include if present
         })
       });
 
@@ -311,16 +336,16 @@ export default function ReportPet() {
                     </div>
 
                     <div className="space-y-2.5">
-                      <Label htmlFor="age" className="text-gray-700 dark:text-gray-300 font-semibold px-1">Age</Label>
+                      <Label htmlFor="age" className="text-gray-700 dark:text-gray-300 font-semibold px-1">Age Range</Label>
                       <Select onValueChange={(val) => setFormData({...formData, age: val})} value={formData.age}>
                         <SelectTrigger className="h-12 bg-gray-50/50 dark:bg-[#151a25]/50 border-gray-100 dark:border-gray-800 rounded-2xl px-5">
                           <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent className="rounded-2xl border-gray-100 dark:border-gray-800 shadow-xl">
-                          <SelectItem value="puppy">Puppy / Kitten</SelectItem>
-                          <SelectItem value="young">Young adult</SelectItem>
-                          <SelectItem value="adult">Adult</SelectItem>
-                          <SelectItem value="senior">Senior</SelectItem>
+                          <SelectItem value="Baby">Baby (0-1 year)</SelectItem>
+                          <SelectItem value="Young">Young (1-3 years)</SelectItem>
+                          <SelectItem value="Adult">Adult (3-8 years)</SelectItem>
+                          <SelectItem value="Senior">Senior (8+ years)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

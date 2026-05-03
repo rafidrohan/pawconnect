@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -19,16 +19,17 @@ import {
   X, 
   Info,
   Heart,
-  Stethoscope,
   ShieldCheck,
-  Plus,
+  Edit2,
   Loader2
 } from "lucide-react";
 import { getApiUrl } from "@/lib/api";
 
-export default function AddPet() {
+export default function EditPet() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
@@ -40,6 +41,38 @@ export default function AddPet() {
     color: "",
     distinguishing_marks: ""
   });
+
+  useEffect(() => {
+    const fetchPetData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(getApiUrl(`/api/my-pets/${id}`), {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFormData({
+            name: data.name || "",
+            species: (data.species || "").toLowerCase(),
+            breed: data.breed || "",
+            gender: (data.gender || "").toLowerCase(),
+            age: data.age || "",
+            color: data.color || "",
+            distinguishing_marks: data.distinguishing_marks || ""
+          });
+          if (data.photo_url) {
+            setImagePreview(data.photo_url);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch pet data", err);
+      } finally {
+        setFetching(false);
+      }
+    };
+
+    fetchPetData();
+  }, [id]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -58,27 +91,36 @@ export default function AddPet() {
     
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(getApiUrl("/api/my-pets"), {
-        method: "POST",
+      const res = await fetch(getApiUrl(`/api/my-pets/${id}`), {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           ...formData,
-          image: imagePreview
+          image: imagePreview?.startsWith("data:") ? imagePreview : null // Only send if it's a new base64 image
         })
       });
 
       if (res.ok) {
-        navigate("/app/my-pets");
+        navigate(`/app/my-pets/${id}`);
       }
     } catch (err) {
-      console.error("Failed to add pet", err);
+      console.error("Failed to update pet", err);
     } finally {
       setLoading(false);
     }
   };
+
+  if (fetching) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
+        <Loader2 className="w-12 h-12 text-rose-500 animate-spin mb-4" />
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Loading Pet Data...</h2>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -91,13 +133,13 @@ export default function AddPet() {
             className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-rose-500 transition-colors mb-2 group"
           >
             <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to My Pets
+            Back to Profile
           </button>
           <h1 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
-            <Plus className="w-8 h-8 text-rose-500" />
-            Add New Pet Profile
+            <Edit2 className="w-8 h-8 text-rose-500" />
+            Edit {formData.name}'s Profile
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 font-medium">Create a high-fidelity profile for your beloved pet.</p>
+          <p className="text-gray-500 dark:text-gray-400 font-medium">Update your pet's information to keep it accurate.</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -115,7 +157,7 @@ export default function AddPet() {
             className="h-11 px-8 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold shadow-lg shadow-rose-500/20 hover:shadow-rose-500/30 transition-all active:scale-95"
           >
             {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Profile
+            Update Profile
           </Button>
         </div>
       </div>
@@ -237,15 +279,26 @@ export default function AddPet() {
                       <>
                         <img src={imagePreview} className="w-full h-full object-cover" alt="Preview" />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                           <Button 
-                             size="sm" 
-                             variant="destructive" 
-                             className="rounded-xl font-bold h-10 px-4"
-                             onClick={() => setImagePreview(null)}
-                           >
-                             <X className="w-4 h-4 mr-2" />
-                             Remove Photo
-                           </Button>
+                           <div className="flex flex-col gap-2">
+                             <Button 
+                               type="button"
+                               size="sm" 
+                               variant="secondary" 
+                               className="rounded-xl font-bold h-10 px-4 bg-white/90"
+                               onClick={() => document.getElementById('photo-upload')?.click()}
+                             >
+                               Change Photo
+                             </Button>
+                             <Button 
+                               type="button"
+                               size="sm" 
+                               variant="destructive" 
+                               className="rounded-xl font-bold h-10 px-4"
+                               onClick={() => setImagePreview(null)}
+                             >
+                               Remove Photo
+                             </Button>
+                           </div>
                         </div>
                       </>
                     ) : (
@@ -257,14 +310,15 @@ export default function AddPet() {
                           <p className="font-bold text-gray-700 dark:text-gray-300">Click to upload photo</p>
                           <p className="text-xs text-gray-500 mt-1">High resolution JPG or PNG</p>
                         </div>
-                        <input 
-                          type="file" 
-                          className="absolute inset-0 opacity-0 cursor-pointer" 
-                          onChange={handleImageChange}
-                          accept="image/*"
-                        />
                       </>
                     )}
+                    <input 
+                      id="photo-upload"
+                      type="file" 
+                      className="absolute inset-0 opacity-0 cursor-pointer" 
+                      onChange={handleImageChange}
+                      accept="image/*"
+                    />
                   </div>
                 </div>
 
@@ -279,36 +333,13 @@ export default function AddPet() {
                 </div>
              </CardContent>
           </Card>
-
-          <Card className="border border-gray-100 dark:border-gray-800 shadow-sm bg-gradient-to-br from-rose-50/50 to-white dark:from-rose-950/10 dark:to-[#1A2234] rounded-2xl overflow-hidden p-6">
-             <div className="space-y-4">
-                <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
-                   <ShieldCheck className="w-6 h-6" />
-                   <h3 className="font-bold text-lg">Safe & Secure</h3>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium leading-relaxed">
-                  Your pet's data is only used for tracking and recovery purposes. We prioritize their safety and your privacy.
-                </p>
-                <ul className="space-y-3">
-                   {[
-                     "Encrypted Medical Data",
-                     "Private Contact Info",
-                     "Real-time Alerts"
-                   ].map((item, i) => (
-                     <li key={i} className="flex items-center gap-2 text-[12px] font-bold text-gray-700 dark:text-gray-300">
-                        <Heart className="w-3.5 h-3.5 text-rose-500 fill-current" />
-                        {item}
-                     </li>
-                   ))}
-                </ul>
-             </div>
-          </Card>
         </div>
       </div>
 
-      {/* Bottom Save Bar - Replicating Premium anchored feel */}
+      {/* Bottom Save Bar */}
       <div className="pt-4 flex justify-end gap-4 border-t border-gray-100 dark:border-gray-800">
         <Button 
+          type="button"
           variant="outline" 
           className="h-12 px-8 rounded-xl border-gray-200 dark:border-gray-800 font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all"
           onClick={() => navigate(-1)}
@@ -316,9 +347,12 @@ export default function AddPet() {
           Discard Changes
         </Button>
         <Button 
+          type="submit"
+          disabled={loading}
           className="h-12 px-12 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold shadow-xl shadow-rose-500/20 hover:shadow-rose-500/30 transition-all active:scale-95"
         >
-          Create Profile
+          {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          Update Profile
         </Button>
       </div>
     </form>
