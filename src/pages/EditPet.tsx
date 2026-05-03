@@ -247,9 +247,9 @@ export default function EditPet() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label className="text-sm font-bold text-gray-700 dark:text-gray-300">About the Pet</Label>
+                <Label className="text-sm font-bold text-gray-700 dark:text-gray-300">Distinctive Marks</Label>
                 <Textarea 
-                  placeholder="Describe your pet's personality, favorite toys, or unique traits..." 
+                  placeholder="Describe unique features like spots, collars, or medical conditions..." 
                   value={formData.distinguishing_marks}
                   onChange={(e) => setFormData({ ...formData, distinguishing_marks: e.target.value })}
                   className="min-h-[120px] rounded-xl bg-gray-50 dark:bg-slate-900/50 border-gray-100 dark:border-gray-800 focus:ring-rose-500/20 focus:border-rose-500 font-medium resize-none p-4"
