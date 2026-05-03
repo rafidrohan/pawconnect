@@ -3,13 +3,17 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pawconnect-
 export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
-  // In browser, use relative paths to ensure it works on both localhost and production
-  // without needing hardcoded URLs or domain mismatches.
+  // Intelligence: Determine if we should use relative or absolute paths
   if (typeof window !== 'undefined') {
-    return cleanPath;
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isRailway = window.location.hostname.includes('railway.app');
+    
+    // If we're on the same server (Local or Railway), use relative paths
+    if (isLocalhost || isRailway) {
+      return cleanPath;
+    }
   }
   
-  const finalUrl = `${API_BASE_URL}${cleanPath}`;
-  console.log(`[API Call] ${finalUrl}`);
-  return finalUrl;
+  // For Cloudflare or other cross-origin deployments, use the absolute URL
+  return `${API_BASE_URL}${cleanPath}`;
 };
